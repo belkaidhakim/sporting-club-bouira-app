@@ -9,7 +9,6 @@ export default function Scanner() {
   const [athleteData, setAthleteData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [entryCount, setEntryCount] = useState(0);
-  const [scannedIds, setScannedIds] = useState(new Set());
 
   const handleScan = async (detectedCodes) => {
     if (loading || scanResult || !detectedCodes || detectedCodes.length === 0) return;
@@ -35,14 +34,24 @@ export default function Scanner() {
         setAthleteData({ error: 'Membre introuvable ou QR code invalide.' });
       } else {
         const statut = data.cartes_acces?.statut || (Array.isArray(data.cartes_acces) && data.cartes_acces[0]?.statut);
-        const alreadyScanned = scannedIds.has(data.id);
-        if (statut === 'ACTIVE' && !alreadyScanned) {
-          setScannedIds(prev => {
-            const newSet = new Set(prev);
-            newSet.add(data.id);
-            return newSet;
-          });
-          setEntryCount(prev => prev + 1);
+        let alreadyScanned = false;
+
+        if (statut === 'ACTIVE') {
+          // Attempt to insert presence
+          const { error: insertError } = await supabase
+            .from('presences')
+            .insert([{ athlete_id: data.id }]);
+          
+          if (insertError) {
+            // 23505 is PostgreSQL unique violation code
+            if (insertError.code === '23505') {
+              alreadyScanned = true;
+            } else {
+              console.error('Erreur insertion présence:', insertError);
+            }
+          } else {
+            setEntryCount(prev => prev + 1);
+          }
         }
         setAthleteData({ ...data, alreadyScanned });
       }

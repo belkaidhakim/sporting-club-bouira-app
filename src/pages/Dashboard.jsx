@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, AlertTriangle, TrendingUp, CreditCard, ScanLine, DollarSign } from 'lucide-react';
+import { Users, AlertTriangle, TrendingUp, CreditCard, ScanLine, DollarSign, Clock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { supabase } from '../supabaseClient';
@@ -10,7 +10,8 @@ export default function Dashboard() {
     total: 0,
     active: 0,
     suspended: 0,
-    recent: []
+    recent: [],
+    recentPresences: []
   });
   const [loading, setLoading] = useState(true);
 
@@ -39,11 +40,18 @@ export default function Dashboard() {
           }
         });
 
+        const { data: presencesData } = await supabase
+          .from('presences')
+          .select(`id, date_scan, athletes (nom, prenom, groupe)`)
+          .order('date_scan', { ascending: false })
+          .limit(10);
+
         setStats({
           total: data?.length || 0,
           active,
           suspended,
-          recent: data?.slice(0, 5) || []
+          recent: data?.slice(0, 5) || [],
+          recentPresences: presencesData || []
         });
       } catch (error) {
         console.error("Error fetching dashboard stats:", error);
@@ -173,6 +181,44 @@ export default function Dashboard() {
                     <DollarSign size={18} className="text-success" /> Gérer les Paiements
                   </Button>
                 </Link>
+              </div>
+            </Card>
+
+            <Card className="md:col-span-2">
+              <h3 className="mb-4 text-lg flex items-center gap-2">
+                <Clock size={20} className="text-accent" /> Dernières Présences (Aujourd'hui)
+              </h3>
+              <div className="table-responsive">
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '400px' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
+                    <th style={{ padding: '0.75rem 0' }}>Heure</th>
+                    <th style={{ padding: '0.75rem 0' }}>Athlète</th>
+                    <th style={{ padding: '0.75rem 0' }}>Groupe</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stats.recentPresences.length === 0 ? (
+                    <tr>
+                      <td colSpan="3" className="py-4 text-center text-muted">Aucun scan récent enregistré.</td>
+                    </tr>
+                  ) : (
+                    stats.recentPresences.map(presence => (
+                      <tr key={presence.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <td style={{ padding: '1rem 0', fontWeight: '500', color: 'var(--accent-success)' }}>
+                          {new Date(presence.date_scan).toLocaleTimeString('fr-FR', { hour: '2-digit', minute:'2-digit' })}
+                        </td>
+                        <td style={{ padding: '1rem 0', fontWeight: 'bold' }}>
+                          {presence.athletes?.nom} {presence.athletes?.prenom}
+                        </td>
+                        <td style={{ padding: '1rem 0' }}>
+                          <Badge status="ACTIVE">{presence.athletes?.groupe || '-'}</Badge>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
               </div>
             </Card>
           </div>
