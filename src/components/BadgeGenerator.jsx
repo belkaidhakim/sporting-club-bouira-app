@@ -81,12 +81,12 @@ export default function BadgeGenerator({ athlete, showEndDate = false }) {
         
         {/* QR Code */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', flexShrink: 0 }}>
-          <div style={{ padding: '6px', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+          <div style={{ padding: '8px', backgroundColor: 'white', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
             <QRCodeSVG 
               value={athlete.token_qr} 
-              size={70} 
-              level={"H"}
-              includeMargin={false}
+              size={90} 
+              level={"M"}
+              includeMargin={true}
             />
           </div>
           <div style={{ fontSize: '0.6rem', color: '#94a3b8', marginTop: '6px', textAlign: 'center', width: '70px', wordBreak: 'break-all' }}>
