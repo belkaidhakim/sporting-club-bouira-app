@@ -252,7 +252,7 @@ export default function AthletesList() {
                     <div className="font-medium">{athlete.nom} {athlete.prenom}</div>
                   </td>
                   <td style={{ padding: '1rem' }}>{athlete.sexe || '-'}</td>
-                  <td style={{ padding: '1rem' }}>{athlete.groupe || '-'}</td>
+                  <td style={{ padding: '1rem 0' }}>{athlete.groupes?.nom || athlete.groupe || '-'}</td>
                   <td style={{ padding: '1rem' }}>{athlete.telephone || '-'}</td>
                   <td style={{ padding: '1rem' }}>
                     <button 

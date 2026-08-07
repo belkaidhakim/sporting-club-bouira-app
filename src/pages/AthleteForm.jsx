@@ -5,26 +5,28 @@ import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
 import { z } from 'zod';
 import { Card, Button } from '../components/ui';
+import { useGroupes } from '../hooks/useGroupes';
 
 const athleteSchema = z.object({
   nom: z.string().min(2, 'Le nom doit faire au moins 2 caractères'),
   prenom: z.string().min(2, 'Le prénom doit faire au moins 2 caractères'),
   date_naissance: z.string().nullable().optional(),
   telephone: z.string().regex(/^(0)[5-7][0-9]{8}$/, 'Numéro de téléphone invalide (ex: 0550123456)').or(z.literal('')).nullable().optional(),
-  groupe: z.enum(['Initiation', 'Apprentissage', 'Entraînement']).or(z.literal('')).nullable().optional(),
+  groupe_id: z.string().nullable().optional(),
   sexe: z.enum(['Homme', 'Femme']).or(z.literal('')).nullable().optional(),
 });
 
 export default function AthleteForm() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const { groupes } = useGroupes();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     nom: '',
     prenom: '',
     date_naissance: '',
     telephone: '',
-    groupe: '',
+    groupe_id: '',
     sexe: '',
     certificat_medical_valide: false,
     photo: null
@@ -45,7 +47,16 @@ export default function AthleteForm() {
         setLoading(true);
         const { data, error } = await supabase.from('athletes').select('*').eq('id', id).single();
         if (data) {
-          setFormData(data);
+          setFormData({
+            nom: data.nom || '',
+            prenom: data.prenom || '',
+            date_naissance: data.date_naissance ? data.date_naissance.split('T')[0] : '',
+            telephone: data.telephone || '',
+            groupe_id: data.groupe_id || '',
+            sexe: data.sexe || '',
+            certificat_medical_valide: data.certificat_medical_valide || false,
+            photo: data.photo || null
+          });
           if (data.photo) setPhotoPreview(data.photo);
         }
         if (error) console.error('Error fetching athlete', error);
@@ -120,7 +131,7 @@ export default function AthleteForm() {
             prenom: formData.prenom,
             date_naissance: formData.date_naissance || null,
             telephone: formData.telephone,
-            groupe: formData.groupe,
+            groupe_id: formData.groupe_id || null,
             sexe: formData.sexe,
             certificat_medical_valide: formData.certificat_medical_valide,
             photo: formData.photo
@@ -138,6 +149,7 @@ export default function AthleteForm() {
           .insert([
             { 
               ...formData,
+              groupe_id: formData.groupe_id || null,
               token_qr,
               // Assuming date_naissance might be empty string, make it null if so
               date_naissance: formData.date_naissance || null 
@@ -221,18 +233,28 @@ export default function AthleteForm() {
 
         <div className="grid md:grid-cols-2 gap-6">
           <div className="form-group">
-            <label className="form-label">Groupe / Catégorie</label>
+            <label className="form-label">Groupe d'entraînement</label>
             <select 
-              name="groupe" 
-              value={formData.groupe} 
+              name="groupe_id" 
+              value={formData.groupe_id} 
               onChange={handleChange} 
               className="form-select"
             >
-              <option value="">Sélectionner un groupe</option>
-              <option value="Initiation">Initiation</option>
-              <option value="Apprentissage">Apprentissage</option>
-              <option value="Entraînement">Entraînement</option>
+              <option value="">-- Non assigné --</option>
+              {groupes.map(g => {
+                const inscrits = g.athletes ? g.athletes.length : 0;
+                const isFull = inscrits >= (g.capacite_max || 20);
+                
+                return (
+                  <option key={g.id} value={g.id}>
+                    {g.nom} ({inscrits}/{g.capacite_max || 20}) {isFull ? '- COMPLET !' : ''}
+                  </option>
+                );
+              })}
             </select>
+            {groupes.find(g => g.id === formData.groupe_id)?.athletes?.length >= (groupes.find(g => g.id === formData.groupe_id)?.capacite_max || 20) && (
+              <div className="text-xs text-warning mt-1">⚠️ Ce groupe est plein. L'athlète sera quand même inscrit (forcé).</div>
+            )}
           </div>
           <div className="form-group">
             <label className="form-label">Sexe</label>

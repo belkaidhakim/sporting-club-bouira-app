@@ -14,11 +14,12 @@ export function useAthletes() {
         .from('athletes')
         .select(`
           *,
-          cartes_acces (statut),
-          cotisations (periode_couverte_fin)
+          cartes_acces (statut, date_dernier_paiement),
+          cotisations (periode_couverte_fin),
+          groupes(nom)
         `)
         .eq('est_actif', true)
-        .order('nom', { ascending: true });
+        .order('date_inscription', { ascending: false });
 
       if (error) throw error;
       setAthletes(data || []);

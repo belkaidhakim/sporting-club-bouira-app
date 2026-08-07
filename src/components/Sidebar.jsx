@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, CreditCard, ScanLine, LogOut, X, Shield } from 'lucide-react';
+import { LayoutDashboard, Users, CreditCard, ScanLine, LogOut, X, Shield, CalendarDays } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '../supabaseClient';
 import toast from 'react-hot-toast';
@@ -51,6 +51,12 @@ export default function Sidebar({ isOpen, setIsOpen }) {
           <NavLink to="/finances" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"}>
             <CreditCard size={20} />
             <span>Finances</span>
+          </NavLink>
+        )}
+        {['admin', 'secretaire'].includes(role) && (
+          <NavLink to="/groupes" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"}>
+            <CalendarDays size={20} />
+            <span>Groupes & Plannings</span>
           </NavLink>
         )}
         {['admin'].includes(role) && (

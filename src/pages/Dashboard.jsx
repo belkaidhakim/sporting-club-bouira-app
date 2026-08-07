@@ -23,7 +23,7 @@ export default function Dashboard() {
         // Fetch athletes with their cartes_acces
         const { data, error } = await supabase
           .from('athletes')
-          .select(`*, cartes_acces(statut), cotisations(periode_couverte_fin)`)
+          .select(`*, cartes_acces(statut), cotisations(periode_couverte_fin), groupes(nom)`)
           .eq('est_actif', true)
           .order('date_inscription', { ascending: false });
 
@@ -43,7 +43,7 @@ export default function Dashboard() {
 
         const { data: presencesData, error: presencesError } = await supabase
           .from('presences')
-          .select(`id, date_scan, athletes (nom, prenom, groupe)`)
+          .select(`id, date_scan, athletes (nom, prenom, groupe, groupes(nom))`)
           .order('date_scan', { ascending: false })
           .limit(10);
 
@@ -153,7 +153,7 @@ export default function Dashboard() {
                       return (
                         <tr key={athlete.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                           <td style={{ padding: '1rem 0', fontWeight: '500' }}>{athlete.nom} {athlete.prenom}</td>
-                          <td style={{ padding: '1rem 0' }}>{athlete.groupe || '-'}</td>
+                          <td style={{ padding: '1rem 0' }}>{athlete.groupes?.nom || athlete.groupe || '-'}</td>
                           <td style={{ padding: '1rem 0', fontSize: '0.85rem' }}>
                             {athlete.cotisations && athlete.cotisations.length > 0
                               ? new Date(Math.max(...athlete.cotisations.map(c => new Date(c.periode_couverte_fin).getTime()))).toLocaleDateString('fr-FR')
@@ -217,7 +217,7 @@ export default function Dashboard() {
                           {presence.athletes?.nom} {presence.athletes?.prenom}
                         </td>
                         <td style={{ padding: '1rem 0' }}>
-                          <Badge status="ACTIVE">{presence.athletes?.groupe || '-'}</Badge>
+                          <Badge status="ACTIVE">{presence.athletes?.groupes?.nom || presence.athletes?.groupe || '-'}</Badge>
                         </td>
                       </tr>
                     ))
