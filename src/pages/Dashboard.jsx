@@ -20,6 +20,7 @@ export default function Dashboard() {
         const { data, error } = await supabase
           .from('athletes')
           .select(`*, cartes_acces(statut), cotisations(periode_couverte_fin)`)
+          .eq('est_actif', true)
           .order('date_inscription', { ascending: false });
 
         if (error) throw error;

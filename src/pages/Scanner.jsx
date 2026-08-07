@@ -28,6 +28,7 @@ export default function Scanner() {
           cotisations (periode_couverte_fin)
         `)
         .eq('token_qr', decodedText)
+        .eq('est_actif', true)
         .single();
         
       if (error || !data) {

@@ -10,7 +10,8 @@ CREATE TABLE public.athletes (
   date_inscription TIMESTAMPTZ DEFAULT NOW(),
   certificat_medical_valide BOOLEAN DEFAULT false,
   photo TEXT,
-  token_qr TEXT UNIQUE NOT NULL
+  token_qr TEXT UNIQUE NOT NULL,
+  est_actif BOOLEAN DEFAULT true
 );
 
 -- Table des cotisations

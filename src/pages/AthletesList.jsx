@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Search, MoreVertical, QrCode, Edit, Printer, Download, Upload } from 'lucide-react';
+import { Plus, Search, MoreVertical, QrCode, Edit, Printer, Download, Upload, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import BadgeGenerator from '../components/BadgeGenerator';
@@ -29,6 +29,7 @@ export default function AthletesList() {
           *,
           cartes_acces (statut)
         `)
+        .eq('est_actif', true)
         .order('nom', { ascending: true });
         
       if (error) throw error;
@@ -68,6 +69,27 @@ export default function AthletesList() {
     } catch (error) {
       console.error('Error updating status:', error.message);
       toast.error('Erreur lors de la mise à jour du statut');
+    }
+  };
+
+  const handleDelete = async (athleteId) => {
+    if (!window.confirm("Voulez-vous vraiment supprimer cet athlète ? (Il sera masqué mais ses cotisations seront conservées pour la comptabilité)")) {
+      return;
+    }
+    
+    try {
+      const { error } = await supabase
+        .from('athletes')
+        .update({ est_actif: false })
+        .eq('id', athleteId);
+        
+      if (error) throw error;
+      
+      toast.success("Athlète archivé avec succès.");
+      fetchAthletes();
+    } catch (error) {
+      console.error('Error deleting athlete:', error.message);
+      toast.error('Erreur lors de la suppression');
     }
   };
 
@@ -327,6 +349,14 @@ export default function AthletesList() {
                       >
                         <QrCode size={16} />
                         Badge
+                      </button>
+                      <button 
+                        className="btn btn-secondary" 
+                        style={{ padding: '0.4rem 0.75rem', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)' }}
+                        onClick={() => handleDelete(athlete.id)}
+                        title="Archiver l'athlète"
+                      >
+                        <Trash2 size={16} />
                       </button>
                     </div>
                   </td>
