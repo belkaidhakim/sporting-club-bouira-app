@@ -1,14 +1,16 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { Plus, Search, MoreVertical, QrCode, Edit, Printer, Download, Upload, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import BadgeGenerator from '../components/BadgeGenerator';
 import toast from 'react-hot-toast';
 import Papa from 'papaparse';
+import { useAthletes } from '../hooks/useAthletes';
+import { Card, Button, Badge, Skeleton } from '../components/ui';
 
 export default function AthletesList() {
-  const [athletes, setAthletes] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { athletes, loading, fetchAthletes, archiveAthlete, toggleAccessStatus } = useAthletes();
   const [selectedAthlete, setSelectedAthlete] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [groupFilter, setGroupFilter] = useState('all');
@@ -18,79 +20,11 @@ export default function AthletesList() {
 
   useEffect(() => {
     fetchAthletes();
-  }, []);
-
-  async function fetchAthletes() {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('athletes')
-        .select(`
-          *,
-          cartes_acces (statut)
-        `)
-        .eq('est_actif', true)
-        .order('nom', { ascending: true });
-        
-      if (error) throw error;
-      setAthletes(data || []);
-    } catch (error) {
-      console.error('Error fetching athletes:', error.message);
-      toast.error('Erreur lors du chargement des athlètes');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  const toggleStatus = async (athleteId, currentStatusObj) => {
-    const currentStatus = Array.isArray(currentStatusObj) ? currentStatusObj[0]?.statut : currentStatusObj?.statut;
-    const newStatus = currentStatus === 'ACTIVE' ? 'SUSPENDUE' : 'ACTIVE';
-    
-    try {
-      const { error } = await supabase
-        .from('cartes_acces')
-        .update({ statut: newStatus })
-        .eq('athlete_id', athleteId);
-        
-      if (error) throw error;
-      
-      setAthletes(athletes.map(a => {
-        if (a.id === athleteId) {
-          return {
-            ...a,
-            cartes_acces: Array.isArray(a.cartes_acces)
-              ? [{ ...a.cartes_acces[0], statut: newStatus }]
-              : { ...a.cartes_acces, statut: newStatus }
-          };
-        }
-        return a;
-      }));
-      toast.success(`Statut mis à jour : ${newStatus}`);
-    } catch (error) {
-      console.error('Error updating status:', error.message);
-      toast.error('Erreur lors de la mise à jour du statut');
-    }
-  };
+  }, [fetchAthletes]);
 
   const handleDelete = async (athleteId) => {
-    if (!window.confirm("Voulez-vous vraiment supprimer cet athlète ? (Il sera masqué mais ses cotisations seront conservées pour la comptabilité)")) {
-      return;
-    }
-    
-    try {
-      const { error } = await supabase
-        .from('athletes')
-        .update({ est_actif: false })
-        .eq('id', athleteId);
-        
-      if (error) throw error;
-      
-      toast.success("Athlète archivé avec succès.");
-      fetchAthletes();
-    } catch (error) {
-      console.error('Error deleting athlete:', error.message);
-      toast.error('Erreur lors de la suppression');
-    }
+    if (!window.confirm("Voulez-vous vraiment archiver cet athlète ?")) return;
+    await archiveAthlete(athleteId);
   };
 
   const handleExport = () => {
@@ -214,29 +148,27 @@ export default function AthletesList() {
             onChange={handleImport} 
             style={{ display: 'none' }} 
           />
-          <button className="btn btn-secondary" onClick={() => fileInputRef.current?.click()}>
-            <Upload size={18} />
-            Importer
-          </button>
-          <button className="btn btn-secondary" onClick={handleExport}>
-            <Download size={18} />
-            Exporter
-          </button>
+          <Button variant="secondary" onClick={() => fileInputRef.current?.click()}>
+            <Upload size={18} /> Importer
+          </Button>
+          <Button variant="secondary" onClick={handleExport}>
+            <Download size={18} /> Exporter
+          </Button>
 
           {selectedAthletes.length > 0 && (
-            <button className="btn btn-secondary" onClick={() => setShowBulkPrint(true)}>
-              <Printer size={18} />
-              Imprimer badges ({selectedAthletes.length})
-            </button>
+            <Button variant="secondary" onClick={() => setShowBulkPrint(true)}>
+              <Printer size={18} /> Imprimer badges ({selectedAthletes.length})
+            </Button>
           )}
-          <Link to="/athletes/new" className="btn btn-primary">
-            <Plus size={18} />
-            Ajouter
+          <Link to="/athletes/new" style={{ textDecoration: 'none' }}>
+            <Button variant="primary">
+              <Plus size={18} /> Ajouter
+            </Button>
           </Link>
         </div>
       </div>
 
-      <div className="glass-panel">
+      <Card noPadding>
         <div className="p-4" style={{ borderBottom: '1px solid var(--border-color)', display: 'flex', gap: '1rem', alignItems: 'center' }}>
           <div className="relative" style={{ width: '300px' }}>
             <Search size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
@@ -263,7 +195,11 @@ export default function AthletesList() {
         </div>
         
         {loading ? (
-          <div className="p-8 text-center text-muted">Chargement...</div>
+          <div className="p-8 flex flex-col gap-4">
+            <Skeleton height="40px" />
+            <Skeleton height="40px" />
+            <Skeleton height="40px" />
+          </div>
         ) : (
           <div className="table-responsive">
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '800px' }}>
@@ -320,44 +256,38 @@ export default function AthletesList() {
                   <td style={{ padding: '1rem' }}>{athlete.telephone || '-'}</td>
                   <td style={{ padding: '1rem' }}>
                     <button 
-                      onClick={() => toggleStatus(athlete.id, athlete.cartes_acces)}
+                      onClick={() => toggleAccessStatus(athlete.id, athlete.cartes_acces)}
                       style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', transition: 'opacity 0.2s' }}
                       title="Cliquez pour changer le statut"
-                      onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
-                      onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
                     >
-                      {(athlete.cartes_acces?.statut === 'ACTIVE' || (Array.isArray(athlete.cartes_acces) && athlete.cartes_acces[0]?.statut === 'ACTIVE'))
-                        ? <span className="badge badge-active">Active</span> 
-                        : <span className="badge badge-suspended">Suspendue</span>
-                      }
+                      <Badge status={athlete.cartes_acces?.statut || (Array.isArray(athlete.cartes_acces) && athlete.cartes_acces[0]?.statut)}>
+                        {(athlete.cartes_acces?.statut === 'ACTIVE' || (Array.isArray(athlete.cartes_acces) && athlete.cartes_acces[0]?.statut === 'ACTIVE'))
+                          ? 'Active' : 'Suspendue'}
+                      </Badge>
                     </button>
                   </td>
                   <td style={{ padding: '1rem', textAlign: 'right' }}>
                     <div className="flex justify-end gap-2">
-                      <Link 
-                        to={`/athletes/edit/${athlete.id}`}
-                        className="btn btn-secondary" 
-                        style={{ padding: '0.4rem 0.75rem' }}
-                      >
-                        <Edit size={16} />
-                        Modifier
+                      <Link to={`/athletes/edit/${athlete.id}`}>
+                        <Button variant="secondary" style={{ padding: '0.4rem 0.75rem' }}>
+                          <Edit size={16} /> Modifier
+                        </Button>
                       </Link>
-                      <button 
-                        className="btn btn-secondary" 
+                      <Button 
+                        variant="secondary" 
                         style={{ padding: '0.4rem 0.75rem' }}
                         onClick={() => setSelectedAthlete(athlete)}
                       >
-                        <QrCode size={16} />
-                        Badge
-                      </button>
-                      <button 
-                        className="btn btn-secondary" 
+                        <QrCode size={16} /> Badge
+                      </Button>
+                      <Button 
+                        variant="secondary" 
                         style={{ padding: '0.4rem 0.75rem', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)' }}
                         onClick={() => handleDelete(athlete.id)}
                         title="Archiver l'athlète"
                       >
                         <Trash2 size={16} />
-                      </button>
+                      </Button>
                     </div>
                   </td>
                 </tr>
@@ -366,7 +296,7 @@ export default function AthletesList() {
           </table>
           </div>
         )}
-      </div>
+      </Card>
 
       {selectedAthlete && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -380,7 +310,7 @@ export default function AthletesList() {
             <h2 className="mb-4 text-center">Badge d'accès</h2>
             <BadgeGenerator athlete={selectedAthlete} />
             <div className="mt-6 flex justify-center">
-               <button className="btn btn-primary" onClick={() => window.print()}>Imprimer</button>
+               <Button variant="primary" onClick={() => window.print()}>Imprimer</Button>
             </div>
           </div>
         </div>
@@ -392,11 +322,11 @@ export default function AthletesList() {
           <div className="p-4 flex justify-between items-center no-print" style={{ backgroundColor: 'var(--panel-bg)', borderBottom: '1px solid var(--border-color)', position: 'sticky', top: 0, zIndex: 10 }}>
             <h2>Impression multiple ({selectedAthletes.length} badges)</h2>
             <div className="flex gap-4">
-              <button className="btn btn-secondary" onClick={() => setShowBulkPrint(false)}>Annuler</button>
-              <button className="btn btn-primary" onClick={() => window.print()}>
+              <Button variant="secondary" onClick={() => setShowBulkPrint(false)}>Annuler</Button>
+              <Button variant="primary" onClick={() => window.print()}>
                 <Printer size={18} />
                 Lancer l'impression
-              </button>
+              </Button>
             </div>
           </div>
           

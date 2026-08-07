@@ -12,6 +12,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.111.0",
     "@yudiel/react-qr-scanner": "^2.6.0",
+    "framer-motion": "^13.0.0",
     "jspdf": "^4.2.1",
     "lucide-react": "^1.28.0",
     "papaparse": "^5.5.4",

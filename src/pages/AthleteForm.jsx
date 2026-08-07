@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import toast from 'react-hot-toast';
+import { motion } from 'framer-motion';
+import { Card, Button } from '../components/ui';
 
 export default function AthleteForm() {
   const navigate = useNavigate();
@@ -141,7 +143,13 @@ export default function AthleteForm() {
         <p>{id ? 'Modifiez les informations de ce membre.' : 'Inscrivez un nouveau membre dans la base de données.'}</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="glass-panel p-6">
+      <motion.form 
+        onSubmit={handleSubmit} 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+      >
+        <Card className="p-6">
         <div className="grid md:grid-cols-2 gap-6">
           <div className="form-group">
             <label className="form-label">Nom *</label>
@@ -269,14 +277,15 @@ export default function AthleteForm() {
         </div>
 
         <div className="mt-8 flex justify-end gap-4" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem' }}>
-          <button type="button" onClick={() => navigate('/athletes')} className="btn btn-secondary">
+          <Button type="button" variant="secondary" onClick={() => navigate('/athletes')}>
             Annuler
-          </button>
-          <button type="submit" className="btn btn-primary" disabled={loading}>
+          </Button>
+          <Button type="submit" variant="primary" disabled={loading}>
             {loading ? 'Enregistrement...' : 'Enregistrer l\'athlète'}
-          </button>
+          </Button>
         </div>
-      </form>
+        </Card>
+      </motion.form>
     </div>
   );
 }

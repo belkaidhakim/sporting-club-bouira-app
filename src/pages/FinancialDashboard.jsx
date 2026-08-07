@@ -1,13 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
 import jsPDF from 'jspdf';
 import toast from 'react-hot-toast';
-import { CreditCard, TrendingUp, Search, Download, AlertTriangle } from 'lucide-react';
+import { CreditCard, TrendingUp, Search, Download, AlertTriangle, FileText, Edit } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { useCotisations } from '../hooks/useCotisations';
+import { Card, Button, Skeleton } from '../components/ui';
 
 export default function FinancialDashboard() {
-  const [cotisations, setCotisations] = useState([]);
-  const [filteredCotisations, setFilteredCotisations] = useState([]);
+  const { cotisations, loading: cotisLoading, fetchCotisations } = useCotisations();
   const [athletes, setAthletes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
@@ -20,8 +21,6 @@ export default function FinancialDashboard() {
     periode_couverte_fin: ''
   };
   const [formData, setFormData] = useState(initialFormState);
-  const [stats, setStats] = useState({ totalRevenue: 0, totalThisMonth: 0 });
-  const [chartData, setChartData] = useState([]);
   
   // Filters
   const [searchName, setSearchName] = useState('');
@@ -29,87 +28,65 @@ export default function FinancialDashboard() {
   const [filterYear, setFilterYear] = useState(new Date().getFullYear().toString());
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    fetchCotisations();
+    fetchAthletes();
+  }, [fetchCotisations]);
 
-  useEffect(() => {
+  const filteredCotisations = useMemo(() => {
     let result = [...cotisations];
-    
     if (searchName) {
       result = result.filter(c => 
         c.athletes?.nom?.toLowerCase().includes(searchName.toLowerCase()) || 
         c.athletes?.prenom?.toLowerCase().includes(searchName.toLowerCase())
       );
     }
-    
     if (filterMonth !== 'all') {
       result = result.filter(c => new Date(c.date_paiement).getMonth() === parseInt(filterMonth));
     }
-    
     if (filterYear !== 'all') {
       result = result.filter(c => new Date(c.date_paiement).getFullYear() === parseInt(filterYear));
     }
-    
-    setFilteredCotisations(result);
+    return result;
   }, [cotisations, searchName, filterMonth, filterYear]);
 
-  async function fetchData() {
+  const stats = useMemo(() => {
+    const total = cotisations.reduce((sum, c) => sum + Number(c.montant_paye), 0);
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+    const thisMonth = cotisations
+      .filter(c => {
+        const date = new Date(c.date_paiement);
+        return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+      })
+      .reduce((sum, c) => sum + Number(c.montant_paye), 0);
+    return { totalRevenue: total, totalThisMonth: thisMonth };
+  }, [cotisations]);
+
+  const chartData = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    const months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
+    const currentYearData = cotisations.filter(c => new Date(c.date_paiement).getFullYear() === currentYear);
+    const monthlyRevenues = Array(12).fill(0);
+    currentYearData.forEach(c => {
+      const m = new Date(c.date_paiement).getMonth();
+      monthlyRevenues[m] += Number(c.montant_paye);
+    });
+    return months.map((month, index) => ({ name: month, revenus: monthlyRevenues[index] }));
+  }, [cotisations]);
+
+  async function fetchAthletes() {
     try {
       setLoading(true);
-      const { data: cotisationsData, error: cotisError } = await supabase
-        .from('cotisations')
-        .select(`
-          *,
-          athletes (nom, prenom)
-        `)
-        .order('date_paiement', { ascending: false });
-        
-      if (cotisError) throw cotisError;
-      const allCotis = cotisationsData || [];
-      setCotisations(allCotis);
-
-      // Calculate stats
-      if (allCotis.length > 0) {
-        const total = allCotis.reduce((sum, c) => sum + Number(c.montant_paye), 0);
-        const currentMonth = new Date().getMonth();
-        const currentYear = new Date().getFullYear();
-        const thisMonth = allCotis
-          .filter(c => {
-            const date = new Date(c.date_paiement);
-            return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
-          })
-          .reduce((sum, c) => sum + Number(c.montant_paye), 0);
-          
-        setStats({ totalRevenue: total, totalThisMonth: thisMonth });
-
-        // Chart Data for current year
-        const months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
-        const currentYearData = allCotis.filter(c => new Date(c.date_paiement).getFullYear() === currentYear);
-        
-        const monthlyRevenues = Array(12).fill(0);
-        currentYearData.forEach(c => {
-          const m = new Date(c.date_paiement).getMonth();
-          monthlyRevenues[m] += Number(c.montant_paye);
-        });
-        
-        const cData = months.map((month, index) => ({
-          name: month,
-          revenus: monthlyRevenues[index]
-        }));
-        setChartData(cData);
-      }
-
-      // Fetch athletes for dropdown
       const { data: athletesData, error: athError } = await supabase
         .from('athletes')
         .select('id, nom, prenom')
+        .eq('est_actif', true)
         .order('nom', { ascending: true });
         
       if (athError) throw athError;
       setAthletes(athletesData || []);
     } catch (error) {
-      console.error('Error fetching finances:', error.message);
-      toast.error('Erreur lors du chargement des données');
+      console.error('Error fetching athletes:', error.message);
     } finally {
       setLoading(false);
     }
@@ -145,7 +122,7 @@ export default function FinancialDashboard() {
       setShowPaymentForm(false);
       setEditingPaymentId(null);
       setFormData(initialFormState);
-      fetchData(); // Refresh list
+      fetchCotisations();
     } catch (error) {
       console.error('Error recording payment:', error.message);
       toast.error('Erreur lors de l\'enregistrement : ' + error.message);
@@ -290,38 +267,37 @@ export default function FinancialDashboard() {
           <p>Gérez les cotisations et suivez les paiements.</p>
         </div>
         <div className="flex gap-3">
-          <button className="btn btn-secondary" onClick={checkExpirations}>
-            <AlertTriangle size={18} className="text-warning" />
-            Vérifier Expirations
-          </button>
-          <button className="btn btn-primary" onClick={() => { setShowPaymentForm(true); setEditingPaymentId(null); setFormData(initialFormState); }}>
+          <Button variant="secondary" onClick={checkExpirations}>
+            <AlertTriangle size={18} className="text-warning" /> Vérifier Expirations
+          </Button>
+          <Button variant="primary" onClick={() => { setShowPaymentForm(true); setEditingPaymentId(null); setFormData(initialFormState); }}>
             + Saisir un paiement
-          </button>
+          </Button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="glass-card flex-col gap-4">
+        <Card className="flex-col gap-4">
           <div className="flex justify-between items-center">
-            <h3 className="text-sm font-semibold text-muted">Revenus du mois</h3>
+            <h3 className="text-sm font-semibold text-muted mb-0">Revenus du mois</h3>
             <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: 'rgba(16, 185, 129, 0.1)', color: 'var(--accent-success)' }}>
               <TrendingUp size={20} />
             </div>
           </div>
-          <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>{stats.totalThisMonth} DZ</div>
-        </div>
+          <div style={{ fontSize: '2.5rem', fontWeight: 'bold', fontFamily: 'Outfit' }}>{stats.totalThisMonth} DZ</div>
+        </Card>
 
-        <div className="glass-card flex-col gap-4">
+        <Card className="flex-col gap-4">
           <div className="flex justify-between items-center">
-            <h3 className="text-sm font-semibold text-muted">Revenus totaux</h3>
-            <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: 'rgba(59, 130, 246, 0.1)', color: 'var(--accent-primary)' }}>
+            <h3 className="text-sm font-semibold text-muted mb-0">Revenus totaux</h3>
+            <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: 'rgba(79, 70, 229, 0.1)', color: 'var(--accent-primary)' }}>
               <CreditCard size={20} />
             </div>
           </div>
-          <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>{stats.totalRevenue} DZ</div>
-        </div>
+          <div style={{ fontSize: '2.5rem', fontWeight: 'bold', fontFamily: 'Outfit' }}>{stats.totalRevenue} DZ</div>
+        </Card>
         
-        <div className="glass-card flex-col gap-2 md:col-span-3 lg:col-span-1" style={{ minHeight: '150px' }}>
+        <Card className="flex-col gap-2 md:col-span-3 lg:col-span-1" style={{ minHeight: '150px' }}>
             <h3 className="text-sm font-semibold text-muted mb-2">Évolution des revenus ({new Date().getFullYear()})</h3>
             {chartData.length > 0 ? (
               <ResponsiveContainer width="100%" height={100}>
@@ -340,11 +316,11 @@ export default function FinancialDashboard() {
             ) : (
               <div className="flex items-center justify-center h-full text-muted">Aucune donnée</div>
             )}
-        </div>
+        </Card>
       </div>
 
       {showPaymentForm && (
-        <div className="glass-panel p-6 mb-8 animate-fade-in">
+        <Card className="mb-8 p-6">
           <h2 className="mb-4">{editingPaymentId ? 'Modifier Paiement' : 'Nouveau Paiement'}</h2>
           <form onSubmit={handlePaymentSubmit}>
             <div className="grid md:grid-cols-2 gap-6 mb-6">
@@ -405,15 +381,15 @@ export default function FinancialDashboard() {
               </div>
             </div>
 
-            <div className="flex justify-end gap-4">
-              <button type="button" className="btn btn-secondary" onClick={() => { setShowPaymentForm(false); setEditingPaymentId(null); setFormData(initialFormState); }}>Annuler</button>
-              <button type="submit" className="btn btn-primary" disabled={loading}>{editingPaymentId ? 'Mettre à jour' : 'Enregistrer le paiement'}</button>
+            <div className="flex justify-end gap-4 mt-2">
+              <Button type="button" variant="secondary" onClick={() => { setShowPaymentForm(false); setEditingPaymentId(null); setFormData(initialFormState); }}>Annuler</Button>
+              <Button type="submit" variant="primary" disabled={loading}>{editingPaymentId ? 'Mettre à jour' : 'Enregistrer le paiement'}</Button>
             </div>
           </form>
-        </div>
+        </Card>
       )}
 
-      <div className="glass-panel">
+      <Card noPadding>
         <div className="p-4 border-b flex flex-wrap justify-between items-center gap-4" style={{ borderBottom: '1px solid var(--border-color)' }}>
           <h3 className="text-lg m-0">Historique des Cotisations</h3>
           
@@ -463,15 +439,17 @@ export default function FinancialDashboard() {
               <option value="2027">2027</option>
             </select>
 
-            <button className="btn btn-secondary" style={{ padding: '0.5rem 1rem' }} onClick={exportToCSV}>
-              <Download size={16} />
-              Export
-            </button>
+            <Button variant="secondary" style={{ padding: '0.5rem 1rem' }} onClick={exportToCSV}>
+              <Download size={16} /> Export
+            </Button>
           </div>
         </div>
         
-        {loading && filteredCotisations.length === 0 ? (
-          <div className="p-8 text-center text-muted">Chargement...</div>
+        {cotisLoading ? (
+          <div className="p-8 flex flex-col gap-4">
+            <Skeleton height="40px" />
+            <Skeleton height="40px" />
+          </div>
         ) : (
           <div className="table-responsive">
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '600px' }}>
@@ -503,20 +481,20 @@ export default function FinancialDashboard() {
                     <td style={{ padding: '1rem' }}>{cotis.mode_paiement}</td>
                     <td style={{ padding: '1rem', textAlign: 'right' }}>
                       <div className="flex justify-end gap-2">
-                        <button 
-                          className="btn btn-secondary" 
-                          style={{ padding: '0.4rem 0.75rem', fontSize: '0.75rem' }}
+                        <Button 
+                          variant="secondary" 
+                          style={{ padding: '0.4rem 0.75rem' }}
                           onClick={() => handleEditClick(cotis)}
                         >
-                          Modifier
-                        </button>
-                        <button 
-                          className="btn btn-secondary" 
-                          style={{ padding: '0.4rem 0.75rem', fontSize: '0.75rem' }}
+                          <Edit size={16} /> Modifier
+                        </Button>
+                        <Button 
+                          variant="secondary" 
+                          style={{ padding: '0.4rem 0.75rem' }}
                           onClick={() => generatePDFReceipt(cotis)}
                         >
-                          Reçu PDF
-                        </button>
+                          <FileText size={16} /> Reçu PDF
+                        </Button>
                       </div>
                     </td>
                   </tr>
@@ -525,7 +503,7 @@ export default function FinancialDashboard() {
             </table>
           </div>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

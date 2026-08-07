@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import Sidebar from './components/Sidebar';
@@ -26,9 +27,18 @@ function AppLayout({ children }) {
       <Sidebar isOpen={isMobileMenuOpen} setIsOpen={setIsMobileMenuOpen} />
       <div className="main-content">
         <Header toggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
-        <div className="page-container animate-fade-in">
-          {children}
-        </div>
+        <AnimatePresence mode="wait">
+          <motion.div 
+            key={window.location.pathname}
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.3 }}
+            className="page-container"
+          >
+            {children}
+          </motion.div>
+        </AnimatePresence>
       </div>
     </div>
   );
@@ -62,7 +72,21 @@ function App() {
 
   return (
     <Router>
-      <Toaster position="top-right" toastOptions={{ style: { background: '#1e293b', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' } }} />
+      <Toaster 
+        position="top-center" 
+        toastOptions={{ 
+          style: { 
+            background: 'rgba(30, 41, 59, 0.8)', 
+            backdropFilter: 'blur(12px)',
+            color: '#fff', 
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: '1rem',
+            padding: '16px'
+          },
+          success: { iconTheme: { primary: '#10b981', secondary: '#fff' } },
+          error: { iconTheme: { primary: '#f43f5e', secondary: '#fff' } }
+        }} 
+      />
       <Routes>
         <Route path="/login" element={session ? <Navigate to="/dashboard" replace /> : <Login />} />
         

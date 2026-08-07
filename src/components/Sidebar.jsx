@@ -1,6 +1,7 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { LayoutDashboard, Users, CreditCard, ScanLine, LogOut, X } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { supabase } from '../supabaseClient';
 import toast from 'react-hot-toast';
 
@@ -8,10 +9,13 @@ export default function Sidebar({ isOpen, setIsOpen }) {
   return (
     <>
       {isOpen && (
-        <div 
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
           className="sidebar-overlay"
           onClick={() => setIsOpen(false)}
-        ></div>
+        />
       )}
       <aside className={`sidebar ${isOpen ? 'open' : ''} no-print`}>
         <button 
@@ -51,7 +55,9 @@ export default function Sidebar({ isOpen, setIsOpen }) {
 
         <div style={{ flex: 1 }}></div>
         
-        <button 
+        <motion.button 
+          whileHover={{ x: 5, backgroundColor: 'rgba(239, 68, 68, 0.1)' }}
+          whileTap={{ scale: 0.95 }}
           className="nav-item" 
           style={{ background: 'none', border: 'none', width: '100%', textAlign: 'left', cursor: 'pointer', color: '#ef4444', marginTop: 'auto', marginBottom: '1rem' }}
           onClick={async () => {
@@ -65,7 +71,7 @@ export default function Sidebar({ isOpen, setIsOpen }) {
         >
           <LogOut size={20} />
           <span>Déconnexion</span>
-        </button>
+        </motion.button>
       </nav>
     </aside>
     </>

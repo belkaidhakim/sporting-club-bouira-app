@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Users, AlertTriangle, TrendingUp, CreditCard } from 'lucide-react';
+import { Users, AlertTriangle, TrendingUp, CreditCard, ScanLine, DollarSign } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { supabase } from '../supabaseClient';
+import { Card, Button, Badge, Skeleton } from '../components/ui';
 
 export default function Dashboard() {
   const [stats, setStats] = useState({
@@ -59,53 +61,63 @@ export default function Dashboard() {
           <h1>Tableau de bord</h1>
           <p>Bienvenue sur l'interface d'administration de votre club.</p>
         </div>
-        <Link to="/athletes/new" className="btn btn-primary">
-          + Nouvel Athlète
+        <Link to="/athletes/new" style={{ textDecoration: 'none' }}>
+          <Button variant="primary">
+            + Nouvel Athlète
+          </Button>
         </Link>
       </div>
 
       {loading ? (
-        <div className="p-8 text-center text-muted">Chargement des statistiques...</div>
+        <div className="grid grid-cols-1 md:grid-cols-3 mt-4 gap-6">
+          <Skeleton height="120px" />
+          <Skeleton height="120px" />
+          <Skeleton height="120px" />
+        </div>
       ) : (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-2 mt-4" style={{ gap: '1.5rem', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
-            <div className="glass-card flex-col gap-4">
+        <motion.div 
+          initial={{ opacity: 0 }} 
+          animate={{ opacity: 1 }} 
+          transition={{ staggerChildren: 0.1 }}
+        >
+          <div className="grid grid-cols-1 md:grid-cols-3 mt-4" style={{ gap: '1.5rem' }}>
+            <Card className="flex-col gap-4">
               <div className="flex justify-between items-center">
-                <h3 className="text-sm font-semibold text-muted">Total Athlètes</h3>
-                <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: 'rgba(59, 130, 246, 0.1)', color: 'var(--accent-primary)' }}>
+                <h3 className="text-sm font-semibold text-muted mb-0">Total Athlètes</h3>
+                <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: 'rgba(79, 70, 229, 0.1)', color: 'var(--accent-primary)' }}>
                   <Users size={20} />
                 </div>
               </div>
-              <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>{stats.total}</div>
-            </div>
+              <div style={{ fontSize: '2.5rem', fontWeight: 'bold', fontFamily: 'Outfit' }}>{stats.total}</div>
+            </Card>
 
-            <div className="glass-card flex-col gap-4">
+            <Card className="flex-col gap-4">
               <div className="flex justify-between items-center">
-                <h3 className="text-sm font-semibold text-muted">Cotisations à jour</h3>
+                <h3 className="text-sm font-semibold text-muted mb-0">Cotisations à jour</h3>
                 <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: 'rgba(16, 185, 129, 0.1)', color: 'var(--accent-success)' }}>
                   <CreditCard size={20} />
                 </div>
               </div>
-              <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>{stats.active}</div>
+              <div style={{ fontSize: '2.5rem', fontWeight: 'bold', fontFamily: 'Outfit' }}>{stats.active}</div>
               <div className="text-sm text-muted">Sur {stats.total} athlètes inscrits</div>
-            </div>
+            </Card>
 
-            <div className="glass-card flex-col gap-4">
+            <Card className="flex-col gap-4">
               <div className="flex justify-between items-center">
-                <h3 className="text-sm font-semibold text-muted">Impayés / Expirés</h3>
-                <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: 'var(--accent-danger)' }}>
+                <h3 className="text-sm font-semibold text-muted mb-0">Impayés / Expirés</h3>
+                <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: 'rgba(244, 63, 94, 0.1)', color: 'var(--accent-danger)' }}>
                   <AlertTriangle size={20} />
                 </div>
               </div>
-              <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>{stats.suspended}</div>
+              <div style={{ fontSize: '2.5rem', fontWeight: 'bold', fontFamily: 'Outfit' }}>{stats.suspended}</div>
               <div className="text-sm text-danger flex items-center gap-2">
                 {stats.suspended > 0 ? <span>Action requise</span> : <span className="text-success">Tout est en ordre</span>}
               </div>
-            </div>
+            </Card>
           </div>
 
-          <div className="mt-8 grid" style={{ gap: '1.5rem', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
-            <div className="glass-panel p-6">
+          <div className="mt-8 grid" style={{ gap: '1.5rem', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))' }}>
+            <Card>
               <h3 className="mb-4 text-lg">Derniers Inscrits</h3>
               <div className="table-responsive">
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '500px' }}>
@@ -135,10 +147,9 @@ export default function Dashboard() {
                               : '-'}
                           </td>
                           <td style={{ padding: '1rem 0' }}>
-                            {statut === 'ACTIVE' 
-                              ? <span className="badge badge-active">Active</span> 
-                              : <span className="badge badge-suspended">Suspendue</span>
-                            }
+                            <Badge status={statut}>
+                              {statut === 'ACTIVE' ? 'Active' : 'Suspendue'}
+                            </Badge>
                           </td>
                         </tr>
                       )
@@ -147,21 +158,25 @@ export default function Dashboard() {
                 </tbody>
               </table>
               </div>
-            </div>
+            </Card>
 
-            <div className="glass-panel p-6">
+            <Card>
               <h3 className="mb-4 text-lg">Actions Rapides</h3>
               <div className="flex flex-col gap-4">
-                <Link to="/scanner" target="_blank" className="btn btn-secondary w-full" style={{ justifyContent: 'flex-start' }}>
-                   Lancer le Scanner QR
+                <Link to="/scanner" target="_blank" style={{ textDecoration: 'none' }}>
+                  <Button variant="secondary" className="w-full" style={{ justifyContent: 'flex-start', padding: '1rem' }}>
+                    <ScanLine size={18} className="text-accent" /> Lancer le Scanner QR
+                  </Button>
                 </Link>
-                <Link to="/finances" className="btn btn-secondary w-full" style={{ justifyContent: 'flex-start' }}>
-                   Gérer les Paiements
+                <Link to="/finances" style={{ textDecoration: 'none' }}>
+                  <Button variant="secondary" className="w-full" style={{ justifyContent: 'flex-start', padding: '1rem' }}>
+                    <DollarSign size={18} className="text-success" /> Gérer les Paiements
+                  </Button>
                 </Link>
               </div>
-            </div>
+            </Card>
           </div>
-        </>
+        </motion.div>
       )}
     </div>
   );
