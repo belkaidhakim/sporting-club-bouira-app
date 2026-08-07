@@ -9,10 +9,10 @@ import { Card, Button } from '../components/ui';
 const athleteSchema = z.object({
   nom: z.string().min(2, 'Le nom doit faire au moins 2 caractères'),
   prenom: z.string().min(2, 'Le prénom doit faire au moins 2 caractères'),
-  date_naissance: z.string().optional(),
-  telephone: z.string().regex(/^(0)[5-7][0-9]{8}$/, 'Numéro de téléphone invalide (ex: 0550123456)').or(z.literal('')),
-  groupe: z.enum(['Initiation', 'Apprentissage', 'Entraînement']).or(z.literal('')),
-  sexe: z.enum(['Homme', 'Femme']).or(z.literal('')),
+  date_naissance: z.string().nullable().optional(),
+  telephone: z.string().regex(/^(0)[5-7][0-9]{8}$/, 'Numéro de téléphone invalide (ex: 0550123456)').or(z.literal('')).nullable().optional(),
+  groupe: z.enum(['Initiation', 'Apprentissage', 'Entraînement']).or(z.literal('')).nullable().optional(),
+  sexe: z.enum(['Homme', 'Femme']).or(z.literal('')).nullable().optional(),
 });
 
 export default function AthleteForm() {
