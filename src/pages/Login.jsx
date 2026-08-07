@@ -8,6 +8,7 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
   const navigate = useNavigate();
 
   const handleLogin = async (e) => {
@@ -18,17 +19,34 @@ export default function Login() {
     }
 
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    
+    if (isSignUp) {
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+      });
 
-    if (error) {
-      toast.error('Identifiants incorrects');
-      setLoading(false);
+      if (error) {
+        toast.error("Erreur d'inscription: " + error.message);
+        setLoading(false);
+      } else {
+        toast.success("Compte créé avec succès ! Connectez-vous.");
+        setIsSignUp(false);
+        setLoading(false);
+      }
     } else {
-      toast.success('Connexion réussie');
-      navigate('/dashboard');
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        toast.error('Identifiants incorrects');
+        setLoading(false);
+      } else {
+        toast.success('Connexion réussie');
+        navigate('/dashboard');
+      }
     }
   };
 
@@ -120,13 +138,23 @@ export default function Login() {
             {loading ? (
               <>
                 <Loader className="animate-spin" size={20} />
-                Connexion...
+                Patientez...
               </>
             ) : (
-              'Se connecter'
+              isSignUp ? "Créer mon compte" : "Se connecter"
             )}
           </button>
         </form>
+        
+        <div style={{ marginTop: '1.5rem', textAlign: 'center' }}>
+          <button 
+            type="button" 
+            onClick={() => setIsSignUp(!isSignUp)}
+            style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '0.85rem', cursor: 'pointer', textDecoration: 'underline' }}
+          >
+            {isSignUp ? "Vous avez déjà un compte ? Connectez-vous" : "Pas encore de compte ? S'inscrire"}
+          </button>
+        </div>
         
         <p style={{ marginTop: '2rem', fontSize: '0.75rem', color: '#475569', textAlign: 'center' }}>
           Accès restreint aux administrateurs du club.<br/>En cas d'oubli de mot de passe, contactez le support technique.
