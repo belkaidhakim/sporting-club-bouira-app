@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
@@ -10,12 +10,23 @@ import AthleteForm from './pages/AthleteForm';
 import FinancialDashboard from './pages/FinancialDashboard';
 import Scanner from './pages/Scanner';
 import Login from './pages/Login';
-import { supabase } from './supabaseClient';
+import ResetPassword from './pages/ResetPassword';
+import UpdatePassword from './pages/UpdatePassword';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 
-function ProtectedRoute({ children, session }) {
+function ProtectedRoute({ children, allowedRoles }) {
+  const { session, role, loading } = useAuth();
+  
+  if (loading) return null; // Avoid flicker
+
   if (!session) {
     return <Navigate to="/login" replace />;
   }
+
+  if (allowedRoles && !allowedRoles.includes(role)) {
+    return <Navigate to="/dashboard" replace />; // Redirect if not authorized
+  }
+
   return children;
 }
 
@@ -44,27 +55,8 @@ function AppLayout({ children }) {
   );
 }
 
-function App() {
-  const [session, setSession] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setLoading(false);
-    }).catch(err => {
-      console.error("Erreur de session:", err);
-      setLoading(false);
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
+function AppRoutes() {
+  const { session, loading } = useAuth();
 
   if (loading) {
     return <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', color: 'white' }}>Chargement...</div>;
@@ -89,20 +81,32 @@ function App() {
       />
       <Routes>
         <Route path="/login" element={session ? <Navigate to="/dashboard" replace /> : <Login />} />
+        <Route path="/reset-password" element={session ? <Navigate to="/dashboard" replace /> : <ResetPassword />} />
+        <Route path="/update-password" element={<UpdatePassword />} />
         
         {/* Public / Scanner route without sidebar */}
         <Route path="/scanner" element={<Scanner />} />
         
         {/* Admin routes with layout */}
-        <Route path="/dashboard" element={<ProtectedRoute session={session}><AppLayout><Dashboard /></AppLayout></ProtectedRoute>} />
-        <Route path="/athletes" element={<ProtectedRoute session={session}><AppLayout><AthletesList /></AppLayout></ProtectedRoute>} />
-        <Route path="/athletes/new" element={<ProtectedRoute session={session}><AppLayout><AthleteForm /></AppLayout></ProtectedRoute>} />
-        <Route path="/athletes/edit/:id" element={<ProtectedRoute session={session}><AppLayout><AthleteForm /></AppLayout></ProtectedRoute>} />
-        <Route path="/finances" element={<ProtectedRoute session={session}><AppLayout><FinancialDashboard /></AppLayout></ProtectedRoute>} />
+        <Route path="/dashboard" element={<ProtectedRoute><AppLayout><Dashboard /></AppLayout></ProtectedRoute>} />
+        
+        <Route path="/athletes" element={<ProtectedRoute allowedRoles={['admin', 'secretaire', 'entraineur']}><AppLayout><AthletesList /></AppLayout></ProtectedRoute>} />
+        <Route path="/athletes/new" element={<ProtectedRoute allowedRoles={['admin', 'secretaire']}><AppLayout><AthleteForm /></AppLayout></ProtectedRoute>} />
+        <Route path="/athletes/edit/:id" element={<ProtectedRoute allowedRoles={['admin', 'secretaire']}><AppLayout><AthleteForm /></AppLayout></ProtectedRoute>} />
+        
+        <Route path="/finances" element={<ProtectedRoute allowedRoles={['admin', 'secretaire']}><AppLayout><FinancialDashboard /></AppLayout></ProtectedRoute>} />
         
         <Route path="*" element={<Navigate to={session ? "/dashboard" : "/login"} replace />} />
       </Routes>
     </Router>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppRoutes />
+    </AuthProvider>
   );
 }
 

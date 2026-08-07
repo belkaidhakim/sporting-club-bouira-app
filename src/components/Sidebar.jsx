@@ -4,8 +4,10 @@ import { LayoutDashboard, Users, CreditCard, ScanLine, LogOut, X } from 'lucide-
 import { motion } from 'framer-motion';
 import { supabase } from '../supabaseClient';
 import toast from 'react-hot-toast';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function Sidebar({ isOpen, setIsOpen }) {
+  const { role } = useAuth();
   return (
     <>
       {isOpen && (
@@ -37,14 +39,20 @@ export default function Sidebar({ isOpen, setIsOpen }) {
           <LayoutDashboard size={20} />
           <span>Tableau de bord</span>
         </NavLink>
-        <NavLink to="/athletes" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"}>
-          <Users size={20} />
-          <span>Athlètes</span>
-        </NavLink>
-        <NavLink to="/finances" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"}>
-          <CreditCard size={20} />
-          <span>Finances</span>
-        </NavLink>
+        
+        {['admin', 'secretaire', 'entraineur'].includes(role) && (
+          <NavLink to="/athletes" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"}>
+            <Users size={20} />
+            <span>Athlètes</span>
+          </NavLink>
+        )}
+
+        {['admin', 'secretaire'].includes(role) && (
+          <NavLink to="/finances" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"}>
+            <CreditCard size={20} />
+            <span>Finances</span>
+          </NavLink>
+        )}
         <div style={{ margin: '2rem 1.5rem 0.5rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em', fontWeight: 600 }}>
           Outils
         </div>

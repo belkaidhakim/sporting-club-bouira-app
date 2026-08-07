@@ -4,8 +4,16 @@ import jsPDF from 'jspdf';
 import toast from 'react-hot-toast';
 import { CreditCard, TrendingUp, Search, Download, AlertTriangle, FileText, Edit } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { z } from 'zod';
 import { useCotisations } from '../hooks/useCotisations';
 import { Card, Button, Skeleton } from '../components/ui';
+
+const paymentSchema = z.object({
+  athlete_id: z.string().min(1, 'Veuillez sélectionner un athlète'),
+  montant_paye: z.preprocess((val) => Number(val), z.number().positive('Le montant doit être supérieur à 0')),
+  mode_paiement: z.enum(['Espèces', 'Virement', 'Chèque']),
+  periode_couverte_fin: z.string().min(1, 'Veuillez sélectionner une date de fin'),
+});
 
 export default function FinancialDashboard() {
   const { cotisations, loading: cotisLoading, fetchCotisations } = useCotisations();
@@ -99,6 +107,16 @@ export default function FinancialDashboard() {
 
   const handlePaymentSubmit = async (e) => {
     e.preventDefault();
+    
+    try {
+      paymentSchema.parse(formData);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        toast.error(err.errors[0].message);
+        return;
+      }
+    }
+
     try {
       setLoading(true);
       

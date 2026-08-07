@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { supabase } from '../supabaseClient';
 import toast from 'react-hot-toast';
 import { Lock, Mail, Loader } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -103,6 +103,11 @@ export default function Login() {
                 style={{ width: '100%', paddingLeft: '3rem', backgroundColor: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255,255,255,0.1)' }}
                 disabled={loading}
               />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+              <Link to="/reset-password" style={{ fontSize: '0.75rem', color: '#38bdf8', textDecoration: 'none' }}>
+                Mot de passe oublié ?
+              </Link>
             </div>
           </div>
 

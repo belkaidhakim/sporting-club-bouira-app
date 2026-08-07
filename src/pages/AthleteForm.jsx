@@ -3,7 +3,17 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
+import { z } from 'zod';
 import { Card, Button } from '../components/ui';
+
+const athleteSchema = z.object({
+  nom: z.string().min(2, 'Le nom doit faire au moins 2 caractères'),
+  prenom: z.string().min(2, 'Le prénom doit faire au moins 2 caractères'),
+  date_naissance: z.string().optional(),
+  telephone: z.string().regex(/^(0)[5-7][0-9]{8}$/, 'Numéro de téléphone invalide (ex: 0550123456)').or(z.literal('')),
+  groupe: z.enum(['Initiation', 'Apprentissage', 'Entraînement']).or(z.literal('')),
+  sexe: z.enum(['Homme', 'Femme']).or(z.literal('')),
+});
 
 export default function AthleteForm() {
   const navigate = useNavigate();
@@ -87,6 +97,17 @@ export default function AthleteForm() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    try {
+      // Zod validation
+      athleteSchema.parse(formData);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        toast.error(err.errors[0].message);
+        return;
+      }
+    }
+
     setLoading(true);
 
     try {
