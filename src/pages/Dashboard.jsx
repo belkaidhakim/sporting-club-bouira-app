@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { supabase } from '../supabaseClient';
 import { Card, Button, Badge, Skeleton } from '../components/ui';
+import toast from 'react-hot-toast';
 
 export default function Dashboard() {
   const [stats, setStats] = useState({
@@ -40,11 +41,15 @@ export default function Dashboard() {
           }
         });
 
-        const { data: presencesData } = await supabase
+        const { data: presencesData, error: presencesError } = await supabase
           .from('presences')
           .select(`id, date_scan, athletes (nom, prenom, groupe)`)
           .order('date_scan', { ascending: false })
           .limit(10);
+
+        if (presencesError) {
+          toast.error("Erreur Dashboard Présences: " + presencesError.message);
+        }
 
         setStats({
           total: data?.length || 0,

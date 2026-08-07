@@ -3,6 +3,7 @@ import { Scanner as QRScanner } from '@yudiel/react-qr-scanner';
 import { supabase } from '../supabaseClient';
 import { CheckCircle2, XCircle, Users } from 'lucide-react';
 import BadgeGenerator from '../components/BadgeGenerator';
+import toast from 'react-hot-toast';
 
 export default function Scanner() {
   const [scanResult, setScanResult] = useState(null);
@@ -47,6 +48,7 @@ export default function Scanner() {
             if (insertError.code === '23505') {
               alreadyScanned = true;
             } else {
+              toast.error("Erreur d'enregistrement: " + insertError.message);
               console.error('Erreur insertion présence:', insertError);
             }
           } else {
