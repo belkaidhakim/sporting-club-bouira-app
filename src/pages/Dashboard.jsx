@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Users, AlertTriangle, CreditCard, ScanLine, DollarSign, Clock } from 'lucide-react';
+import { Users, AlertTriangle, CreditCard, ScanLine, DollarSign, Clock, UserX, Phone } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { supabase } from '../supabaseClient';
 import { Card, StatCard, Button, Badge, Skeleton } from '../components/ui';
 import toast from 'react-hot-toast';
+
+const JOURS_FR = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 
 const containerVariants = {
   hidden: {},
@@ -31,10 +33,13 @@ export default function Dashboard() {
     active: 0,
     suspended: 0,
     todayPresences: 0,
+    expectedToday: 0,
+    absentTodayList: [],
     recent: [],
     recentPresences: []
   });
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState('presences'); // 'presences' | 'absents'
   const [presenceFilter, setPresenceFilter] = useState('today'); // 'today', 'week', 'month', 'all'
   const [presenceSearch, setPresenceSearch] = useState('');
 
@@ -44,7 +49,7 @@ export default function Dashboard() {
         setLoading(true);
         const { data, error } = await supabase
           .from('athletes')
-          .select(`*, cartes_acces(statut), cotisations(periode_couverte_fin), groupes(nom)`)
+          .select(`*, cartes_acces(statut), cotisations(periode_couverte_fin), groupes(nom, horaires)`)
           .eq('est_actif', true)
           .order('date_inscription', { ascending: false });
 
@@ -72,7 +77,29 @@ export default function Dashboard() {
           .select('athlete_id')
           .gte('date_scan', todayStart.toISOString());
 
-        const uniqueTodayAthletes = new Set(todayScans?.map(p => p.athlete_id) || []).size;
+        const todayScansSet = new Set(todayScans?.map(p => p.athlete_id) || []);
+        const uniqueTodayAthletes = todayScansSet.size;
+
+        // Calcul du suivi des absences du jour selon le planning
+        const todayDayName = JOURS_FR[new Date().getDay()];
+        const expectedTodayList = [];
+        const absentTodayList = [];
+
+        data?.forEach(athlete => {
+          const groupHoraires = parseHoraires(athlete.groupes?.horaires);
+          const hasSessionToday = groupHoraires.some(h => h.jour === todayDayName);
+
+          if (hasSessionToday) {
+            expectedTodayList.push(athlete);
+            if (!todayScansSet.has(athlete.id)) {
+              const sessionToday = groupHoraires.find(h => h.jour === todayDayName);
+              absentTodayList.push({
+                ...athlete,
+                heureSeance: sessionToday ? sessionToday.heure : '-'
+              });
+            }
+          }
+        });
 
         // Récupérer l'historique récent des présences
         const { data: presencesData, error: presencesError } = await supabase
@@ -90,6 +117,8 @@ export default function Dashboard() {
           active,
           suspended,
           todayPresences: uniqueTodayAthletes,
+          expectedToday: expectedTodayList.length,
+          absentTodayList,
           recent: data?.slice(0, 5) || [],
           recentPresences: presencesData || []
         });
@@ -105,9 +134,7 @@ export default function Dashboard() {
   // Filtrage des présences
   const filteredPresences = stats.recentPresences.filter(presence => {
     const scanDate = new Date(presence.date_scan);
-    const now = new Date();
 
-    // Filtre période
     if (presenceFilter === 'today') {
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
@@ -122,7 +149,6 @@ export default function Dashboard() {
       if (scanDate < monthAgo) return false;
     }
 
-    // Filtre recherche nom / groupe
     if (presenceSearch) {
       const q = presenceSearch.toLowerCase();
       const nom = (presence.athletes?.nom || '').toLowerCase();
@@ -134,12 +160,24 @@ export default function Dashboard() {
     return true;
   });
 
+  // Filtrage de la liste des absents
+  const filteredAbsents = stats.absentTodayList.filter(athlete => {
+    if (presenceSearch) {
+      const q = presenceSearch.toLowerCase();
+      const nom = (athlete.nom || '').toLowerCase();
+      const prenom = (athlete.prenom || '').toLowerCase();
+      const groupe = (athlete.groupes?.nom || athlete.groupe || '').toLowerCase();
+      return nom.includes(q) || prenom.includes(q) || groupe.includes(q);
+    }
+    return true;
+  });
+
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1>Tableau de bord</h1>
-          <p style={{ marginBottom: 0 }}>Vue d'ensemble de l'activité et contrôle des pointages.</p>
+          <p style={{ marginBottom: 0 }}>Vue d'ensemble de l'activité, assiduité et contrôle des pointages.</p>
         </div>
         <Link to="/athletes/new" style={{ textDecoration: 'none' }}>
           <Button variant="primary">
@@ -177,7 +215,16 @@ export default function Dashboard() {
               glowColor="rgba(34, 211, 238, 0.15)"
               label="Présences Aujourd'hui"
               value={`${stats.todayPresences} pointages`}
-              subtitle={`Sur ${stats.active} cotisations actives`}
+              subtitle={stats.expectedToday > 0 ? `${stats.todayPresences} sur ${stats.expectedToday} attendus aujourd'hui` : `Sur ${stats.active} cotisations actives`}
+            />
+            <StatCard
+              icon={<UserX size={20} />}
+              iconBg="rgba(245, 158, 11, 0.1)"
+              iconColor="var(--accent-warning)"
+              glowColor="rgba(245, 158, 11, 0.15)"
+              label="Absents du Jour (Planning)"
+              value={`${stats.absentTodayList.length} absents`}
+              subtitle={stats.expectedToday > 0 ? `Sur ${stats.expectedToday} athlètes programmés` : 'Aucune séance prévue ce jour'}
             />
             <StatCard
               icon={<CreditCard size={20} />}
@@ -187,15 +234,6 @@ export default function Dashboard() {
               label="Cotisations à jour"
               value={stats.active}
               subtitle={`Sur ${stats.total} athlètes inscrits`}
-            />
-            <StatCard
-              icon={<AlertTriangle size={20} />}
-              iconBg="rgba(244, 63, 94, 0.1)"
-              iconColor="var(--accent-danger)"
-              glowColor="rgba(244, 63, 94, 0.15)"
-              label="Impayés / Expirés"
-              value={stats.suspended}
-              subtitle={stats.suspended > 0 ? 'Action requise' : 'Tout est en ordre ✓'}
             />
           </motion.div>
 
@@ -261,133 +299,210 @@ export default function Dashboard() {
 
             <Card className="md:col-span-2">
               <div className="flex flex-wrap justify-between items-center mb-4 gap-3">
-                <h3 className="flex items-center gap-2 m-0" style={{ fontSize: '1rem' }}>
-                  <Clock size={18} className="text-accent" /> Contrôle des Pointages
-                  <span style={{ 
-                    fontSize: '0.75rem', 
-                    padding: '2px 10px', 
-                    borderRadius: 'var(--radius-full)', 
-                    backgroundColor: 'rgba(34, 211, 238, 0.1)', 
-                    color: 'var(--accent-secondary)',
-                    border: '1px solid rgba(34, 211, 238, 0.2)',
-                    fontWeight: 600,
-                    fontFamily: 'Outfit'
-                  }}>
-                    {filteredPresences.length} pointage(s)
-                  </span>
-                </h3>
-
-                {/* Filtres de Période */}
-                <div className="flex flex-wrap items-center gap-2">
-                  <input
-                    type="text"
-                    placeholder="Filtrer par nom ou groupe..."
-                    value={presenceSearch}
-                    onChange={e => setPresenceSearch(e.target.value)}
-                    className="form-input"
-                    style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem', width: '180px' }}
-                  />
-                  <div className="flex gap-1" style={{ backgroundColor: 'var(--bg-tertiary)', padding: '2px', borderRadius: 'var(--radius-full)' }}>
+                <div className="flex items-center gap-2">
+                  {/* Bascule Mode Présences / Absents */}
+                  <div className="flex gap-1" style={{ backgroundColor: 'var(--bg-tertiary)', padding: '3px', borderRadius: 'var(--radius-md)' }}>
                     <button 
-                      onClick={() => setPresenceFilter('today')} 
-                      className={`tab-btn ${presenceFilter === 'today' ? 'active' : ''}`}
-                      style={{ padding: '3px 10px', fontSize: '0.75rem' }}
+                      onClick={() => setViewMode('presences')} 
+                      className={`tab-btn ${viewMode === 'presences' ? 'active' : ''}`}
+                      style={{ padding: '4px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}
                     >
-                      Aujourd'hui
+                      <Clock size={14} />
+                      Pointages enregistrés
                     </button>
                     <button 
-                      onClick={() => setPresenceFilter('week')} 
-                      className={`tab-btn ${presenceFilter === 'week' ? 'active' : ''}`}
-                      style={{ padding: '3px 10px', fontSize: '0.75rem' }}
+                      onClick={() => setViewMode('absents')} 
+                      className={`tab-btn ${viewMode === 'absents' ? 'active' : ''}`}
+                      style={{ padding: '4px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}
                     >
-                      7j
-                    </button>
-                    <button 
-                      onClick={() => setPresenceFilter('month')} 
-                      className={`tab-btn ${presenceFilter === 'month' ? 'active' : ''}`}
-                      style={{ padding: '3px 10px', fontSize: '0.75rem' }}
-                    >
-                      Mois
-                    </button>
-                    <button 
-                      onClick={() => setPresenceFilter('all')} 
-                      className={`tab-btn ${presenceFilter === 'all' ? 'active' : ''}`}
-                      style={{ padding: '3px 10px', fontSize: '0.75rem' }}
-                    >
-                      Tous
+                      <UserX size={14} />
+                      Absents du jour ({stats.absentTodayList.length})
                     </button>
                   </div>
                 </div>
+
+                {/* Filtres de Période & Recherche */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="Filtrer nom ou groupe..."
+                    value={presenceSearch}
+                    onChange={e => setPresenceSearch(e.target.value)}
+                    className="form-input"
+                    style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem', width: '170px' }}
+                  />
+
+                  {viewMode === 'presences' && (
+                    <div className="flex gap-1" style={{ backgroundColor: 'var(--bg-tertiary)', padding: '2px', borderRadius: 'var(--radius-full)' }}>
+                      <button 
+                        onClick={() => setPresenceFilter('today')} 
+                        className={`tab-btn ${presenceFilter === 'today' ? 'active' : ''}`}
+                        style={{ padding: '3px 10px', fontSize: '0.75rem' }}
+                      >
+                        Aujourd'hui
+                      </button>
+                      <button 
+                        onClick={() => setPresenceFilter('week')} 
+                        className={`tab-btn ${presenceFilter === 'week' ? 'active' : ''}`}
+                        style={{ padding: '3px 10px', fontSize: '0.75rem' }}
+                      >
+                        7j
+                      </button>
+                      <button 
+                        onClick={() => setPresenceFilter('month')} 
+                        className={`tab-btn ${presenceFilter === 'month' ? 'active' : ''}`}
+                        style={{ padding: '3px 10px', fontSize: '0.75rem' }}
+                      >
+                        Mois
+                      </button>
+                      <button 
+                        onClick={() => setPresenceFilter('all')} 
+                        className={`tab-btn ${presenceFilter === 'all' ? 'active' : ''}`}
+                        style={{ padding: '3px 10px', fontSize: '0.75rem' }}
+                      >
+                        Tous
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <div className="table-responsive">
-              <table style={{ minWidth: '550px' }}>
-                <thead>
-                  <tr>
-                    <th>Date & Heure Scan</th>
-                    <th>Athlète</th>
-                    <th>Groupe</th>
-                    <th>Planning d'entraînement</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredPresences.length === 0 ? (
-                    <tr>
-                      <td colSpan="4" className="text-center text-muted" style={{ padding: '2rem 0' }}>Aucun pointage trouvé pour ces critères.</td>
-                    </tr>
-                  ) : (
-                    filteredPresences.map(presence => {
-                      const planning = parseHoraires(presence.athletes?.groupes?.horaires);
-                      const scanDate = new Date(presence.date_scan);
-                      const isToday = scanDate.toDateString() === new Date().toDateString();
+              {/* TABLEAU 1: POINTAGES ENREGISTRÉS */}
+              {viewMode === 'presences' ? (
+                <div className="table-responsive">
+                  <table style={{ minWidth: '550px' }}>
+                    <thead>
+                      <tr>
+                        <th>Date & Heure Scan</th>
+                        <th>Athlète</th>
+                        <th>Groupe</th>
+                        <th>Planning d'entraînement</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredPresences.length === 0 ? (
+                        <tr>
+                          <td colSpan="4" className="text-center text-muted" style={{ padding: '2rem 0' }}>Aucun pointage trouvé pour ces critères.</td>
+                        </tr>
+                      ) : (
+                        filteredPresences.map(presence => {
+                          const planning = parseHoraires(presence.athletes?.groupes?.horaires);
+                          const scanDate = new Date(presence.date_scan);
+                          const isToday = scanDate.toDateString() === new Date().toDateString();
 
-                      return (
-                        <tr key={presence.id}>
-                          <td style={{ fontWeight: 500, color: isToday ? 'var(--accent-success)' : 'var(--text-secondary)' }}>
-                            <span style={{ fontSize: '0.75rem', opacity: 0.8, marginRight: '6px' }}>
-                              {scanDate.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}
-                            </span>
-                            {scanDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute:'2-digit' })}
-                          </td>
-                          <td style={{ fontWeight: 600 }}>
-                            {presence.athletes?.nom} {presence.athletes?.prenom}
-                          </td>
-                          <td>
-                            <Badge status="ACTIVE">{presence.athletes?.groupes?.nom || presence.athletes?.groupe || '-'}</Badge>
-                          </td>
-                          <td>
-                            {planning.length > 0 ? (
-                              <div className="flex flex-wrap gap-1">
-                                {planning.map((s, i) => (
-                                  <span key={i} style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '3px',
-                                    padding: '2px 8px',
-                                    borderRadius: 'var(--radius-full)',
-                                    backgroundColor: 'rgba(99, 102, 241, 0.1)',
-                                    color: 'var(--accent-primary-hover)',
-                                    border: '1px solid rgba(99, 102, 241, 0.2)',
-                                    fontSize: '0.7rem',
-                                    fontWeight: 600,
-                                    fontFamily: 'Outfit'
-                                  }}>
-                                    <Clock size={10} />
-                                    {s.jour} {s.heure}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : (
-                              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>-</span>
-                            )}
+                          return (
+                            <tr key={presence.id}>
+                              <td style={{ fontWeight: 500, color: isToday ? 'var(--accent-success)' : 'var(--text-secondary)' }}>
+                                <span style={{ fontSize: '0.75rem', opacity: 0.8, marginRight: '6px' }}>
+                                  {scanDate.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}
+                                </span>
+                                {scanDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute:'2-digit' })}
+                              </td>
+                              <td style={{ fontWeight: 600 }}>
+                                {presence.athletes?.nom} {presence.athletes?.prenom}
+                              </td>
+                              <td>
+                                <Badge status="ACTIVE">{presence.athletes?.groupes?.nom || presence.athletes?.groupe || '-'}</Badge>
+                              </td>
+                              <td>
+                                {planning.length > 0 ? (
+                                  <div className="flex flex-wrap gap-1">
+                                    {planning.map((s, i) => (
+                                      <span key={i} style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '3px',
+                                        padding: '2px 8px',
+                                        borderRadius: 'var(--radius-full)',
+                                        backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                                        color: 'var(--accent-primary-hover)',
+                                        border: '1px solid rgba(99, 102, 241, 0.2)',
+                                        fontSize: '0.7rem',
+                                        fontWeight: 600,
+                                        fontFamily: 'Outfit'
+                                      }}>
+                                        <Clock size={10} />
+                                        {s.jour} {s.heure}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>-</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                /* TABLEAU 2: ABSENTS DU JOUR SELON LE PLANNING */
+                <div className="table-responsive">
+                  <table style={{ minWidth: '550px' }}>
+                    <thead>
+                      <tr>
+                        <th>Athlète Absent</th>
+                        <th>Groupe</th>
+                        <th>Séance Prévue</th>
+                        <th>Contact / Téléphone</th>
+                        <th>Statut</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredAbsents.length === 0 ? (
+                        <tr>
+                          <td colSpan="5" className="text-center text-success" style={{ padding: '2rem 0', fontWeight: 600 }}>
+                            🎉 Aucun absent ! Tous les athlètes programmés ont pointé leur badge aujourd'hui.
                           </td>
                         </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-              </div>
+                      ) : (
+                        filteredAbsents.map(athlete => (
+                          <tr key={athlete.id}>
+                            <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                              {athlete.nom?.toUpperCase()} {athlete.prenom}
+                            </td>
+                            <td>
+                              <Badge status="ACTIVE">{athlete.groupes?.nom || athlete.groupe || '-'}</Badge>
+                            </td>
+                            <td style={{ fontWeight: 600, color: 'var(--accent-warning)' }}>
+                              <span className="flex items-center gap-1">
+                                <Clock size={13} />
+                                {JOURS_FR[new Date().getDay()]} à {athlete.heureSeance}
+                              </span>
+                            </td>
+                            <td>
+                              {athlete.telephone ? (
+                                <a 
+                                  href={`tel:${athlete.telephone}`}
+                                  style={{ 
+                                    textDecoration: 'none', 
+                                    color: 'var(--accent-secondary)', 
+                                    fontWeight: 600, 
+                                    fontSize: '0.8rem',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                  }}
+                                >
+                                  <Phone size={12} />
+                                  {athlete.telephone}
+                                </a>
+                              ) : (
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Non renseigné</span>
+                              )}
+                            </td>
+                            <td>
+                              <Badge status="SUSPENDUE">ABSENT</Badge>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </Card>
           </motion.div>
         </motion.div>
