@@ -30,10 +30,13 @@ export default function Dashboard() {
     total: 0,
     active: 0,
     suspended: 0,
+    todayPresences: 0,
     recent: [],
     recentPresences: []
   });
   const [loading, setLoading] = useState(true);
+  const [presenceFilter, setPresenceFilter] = useState('today'); // 'today', 'week', 'month', 'all'
+  const [presenceSearch, setPresenceSearch] = useState('');
 
   useEffect(() => {
     async function fetchStats() {
@@ -59,11 +62,24 @@ export default function Dashboard() {
           }
         });
 
+        // Date de début d'aujourd'hui (00:00:00)
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+
+        // Récupérer tous les scans d'aujourd'hui pour compter les présences uniques
+        const { data: todayScans } = await supabase
+          .from('presences')
+          .select('athlete_id')
+          .gte('date_scan', todayStart.toISOString());
+
+        const uniqueTodayAthletes = new Set(todayScans?.map(p => p.athlete_id) || []).size;
+
+        // Récupérer l'historique récent des présences
         const { data: presencesData, error: presencesError } = await supabase
           .from('presences')
-          .select(`id, date_scan, athletes (nom, prenom, groupe, groupes(nom, horaires))`)
+          .select(`id, date_scan, athlete_id, athletes (nom, prenom, groupe, groupes(nom, horaires))`)
           .order('date_scan', { ascending: false })
-          .limit(10);
+          .limit(50);
 
         if (presencesError) {
           toast.error("Erreur Dashboard Présences: " + presencesError.message);
@@ -73,6 +89,7 @@ export default function Dashboard() {
           total: data?.length || 0,
           active,
           suspended,
+          todayPresences: uniqueTodayAthletes,
           recent: data?.slice(0, 5) || [],
           recentPresences: presencesData || []
         });
@@ -85,12 +102,44 @@ export default function Dashboard() {
     fetchStats();
   }, []);
 
+  // Filtrage des présences
+  const filteredPresences = stats.recentPresences.filter(presence => {
+    const scanDate = new Date(presence.date_scan);
+    const now = new Date();
+
+    // Filtre période
+    if (presenceFilter === 'today') {
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      if (scanDate < todayStart) return false;
+    } else if (presenceFilter === 'week') {
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      if (scanDate < weekAgo) return false;
+    } else if (presenceFilter === 'month') {
+      const monthAgo = new Date();
+      monthAgo.setMonth(monthAgo.getMonth() - 1);
+      if (scanDate < monthAgo) return false;
+    }
+
+    // Filtre recherche nom / groupe
+    if (presenceSearch) {
+      const q = presenceSearch.toLowerCase();
+      const nom = (presence.athletes?.nom || '').toLowerCase();
+      const prenom = (presence.athletes?.prenom || '').toLowerCase();
+      const groupe = (presence.athletes?.groupes?.nom || presence.athletes?.groupe || '').toLowerCase();
+      return nom.includes(q) || prenom.includes(q) || groupe.includes(q);
+    }
+
+    return true;
+  });
+
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1>Tableau de bord</h1>
-          <p style={{ marginBottom: 0 }}>Vue d'ensemble de l'activité de votre club.</p>
+          <p style={{ marginBottom: 0 }}>Vue d'ensemble de l'activité et contrôle des pointages.</p>
         </div>
         <Link to="/athletes/new" style={{ textDecoration: 'none' }}>
           <Button variant="primary">
@@ -100,7 +149,8 @@ export default function Dashboard() {
       </div>
 
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <Skeleton height="140px" />
           <Skeleton height="140px" />
           <Skeleton height="140px" />
           <Skeleton height="140px" />
@@ -111,7 +161,7 @@ export default function Dashboard() {
           initial="hidden" 
           animate="visible"
         >
-          <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <StatCard
               icon={<Users size={20} />}
               iconBg="rgba(99, 102, 241, 0.1)"
@@ -119,6 +169,15 @@ export default function Dashboard() {
               glowColor="rgba(99, 102, 241, 0.15)"
               label="Total Athlètes"
               value={stats.total}
+            />
+            <StatCard
+              icon={<ScanLine size={20} />}
+              iconBg="rgba(34, 211, 238, 0.1)"
+              iconColor="var(--accent-secondary)"
+              glowColor="rgba(34, 211, 238, 0.15)"
+              label="Présences Aujourd'hui"
+              value={`${stats.todayPresences} pointages`}
+              subtitle={`Sur ${stats.active} cotisations actives`}
             />
             <StatCard
               icon={<CreditCard size={20} />}
@@ -201,31 +260,94 @@ export default function Dashboard() {
             </Card>
 
             <Card className="md:col-span-2">
-              <h3 className="mb-4 flex items-center gap-2" style={{ fontSize: '1rem' }}>
-                <Clock size={18} className="text-accent" /> Dernières Présences (Scans récents)
-              </h3>
+              <div className="flex flex-wrap justify-between items-center mb-4 gap-3">
+                <h3 className="flex items-center gap-2 m-0" style={{ fontSize: '1rem' }}>
+                  <Clock size={18} className="text-accent" /> Contrôle des Pointages
+                  <span style={{ 
+                    fontSize: '0.75rem', 
+                    padding: '2px 10px', 
+                    borderRadius: 'var(--radius-full)', 
+                    backgroundColor: 'rgba(34, 211, 238, 0.1)', 
+                    color: 'var(--accent-secondary)',
+                    border: '1px solid rgba(34, 211, 238, 0.2)',
+                    fontWeight: 600,
+                    fontFamily: 'Outfit'
+                  }}>
+                    {filteredPresences.length} pointage(s)
+                  </span>
+                </h3>
+
+                {/* Filtres de Période */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="Filtrer par nom ou groupe..."
+                    value={presenceSearch}
+                    onChange={e => setPresenceSearch(e.target.value)}
+                    className="form-input"
+                    style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem', width: '180px' }}
+                  />
+                  <div className="flex gap-1" style={{ backgroundColor: 'rgba(0,0,0,0.3)', padding: '2px', borderRadius: 'var(--radius-full)' }}>
+                    <button 
+                      onClick={() => setPresenceFilter('today')} 
+                      className={`tab-btn ${presenceFilter === 'today' ? 'active' : ''}`}
+                      style={{ padding: '3px 10px', fontSize: '0.75rem' }}
+                    >
+                      Aujourd'hui
+                    </button>
+                    <button 
+                      onClick={() => setPresenceFilter('week')} 
+                      className={`tab-btn ${presenceFilter === 'week' ? 'active' : ''}`}
+                      style={{ padding: '3px 10px', fontSize: '0.75rem' }}
+                    >
+                      7j
+                    </button>
+                    <button 
+                      onClick={() => setPresenceFilter('month')} 
+                      className={`tab-btn ${presenceFilter === 'month' ? 'active' : ''}`}
+                      style={{ padding: '3px 10px', fontSize: '0.75rem' }}
+                    >
+                      Mois
+                    </button>
+                    <button 
+                      onClick={() => setPresenceFilter('all')} 
+                      className={`tab-btn ${presenceFilter === 'all' ? 'active' : ''}`}
+                      style={{ padding: '3px 10px', fontSize: '0.75rem' }}
+                    >
+                      Tous
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               <div className="table-responsive">
-              <table style={{ minWidth: '500px' }}>
+              <table style={{ minWidth: '550px' }}>
                 <thead>
                   <tr>
-                    <th>Heure Scan</th>
+                    <th>Date & Heure Scan</th>
                     <th>Athlète</th>
                     <th>Groupe</th>
                     <th>Planning d'entraînement</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {stats.recentPresences.length === 0 ? (
+                  {filteredPresences.length === 0 ? (
                     <tr>
-                      <td colSpan="4" className="text-center text-muted" style={{ padding: '2rem 0' }}>Aucun scan récent enregistré.</td>
+                      <td colSpan="4" className="text-center text-muted" style={{ padding: '2rem 0' }}>Aucun pointage trouvé pour ces critères.</td>
                     </tr>
                   ) : (
-                    stats.recentPresences.map(presence => {
+                    filteredPresences.map(presence => {
                       const planning = parseHoraires(presence.athletes?.groupes?.horaires);
+                      const scanDate = new Date(presence.date_scan);
+                      const isToday = scanDate.toDateString() === new Date().toDateString();
+
                       return (
                         <tr key={presence.id}>
-                          <td style={{ fontWeight: 500, color: 'var(--accent-success)' }}>
-                            {new Date(presence.date_scan).toLocaleTimeString('fr-FR', { hour: '2-digit', minute:'2-digit' })}
+                          <td style={{ fontWeight: 500, color: isToday ? 'var(--accent-success)' : 'var(--text-secondary)' }}>
+                            <span style={{ fontSize: '0.75rem', opacity: 0.8, marginRight: '6px' }}>
+                              {scanDate.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}
+                            </span>
+                            {scanDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute:'2-digit' })}
                           </td>
                           <td style={{ fontWeight: 600 }}>
                             {presence.athletes?.nom} {presence.athletes?.prenom}
