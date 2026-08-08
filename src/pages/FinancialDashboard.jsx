@@ -545,7 +545,7 @@ export default function FinancialDashboard() {
             <div className="table-responsive">
               <table className="w-full text-left border-collapse" style={{ minWidth: '600px' }}>
                 <thead>
-                  <tr style={{ backgroundColor: 'rgba(0,0,0,0.2)', color: 'var(--text-muted)' }}>
+                  <tr style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-muted)' }}>
                     <th className="p-4 font-medium">Date</th>
                     <th className="p-4 font-medium">Membre</th>
                     <th className="p-4 font-medium">Montant</th>
@@ -584,7 +584,7 @@ export default function FinancialDashboard() {
             <div className="table-responsive">
               <table className="w-full text-left border-collapse" style={{ minWidth: '600px' }}>
                 <thead>
-                  <tr style={{ backgroundColor: 'rgba(0,0,0,0.2)', color: 'var(--text-muted)' }}>
+                  <tr style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-muted)' }}>
                     <th className="p-4 font-medium">Date</th>
                     <th className="p-4 font-medium">Description</th>
                     <th className="p-4 font-medium">Catégorie</th>

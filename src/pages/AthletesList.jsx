@@ -203,7 +203,7 @@ export default function AthletesList() {
           <div className="table-responsive">
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '800px' }}>
             <thead>
-              <tr style={{ backgroundColor: 'rgba(0,0,0,0.2)', color: 'var(--text-muted)' }}>
+              <tr style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-muted)' }}>
                 <th style={{ padding: '1rem', width: '40px' }}>
                   <input 
                     type="checkbox" 

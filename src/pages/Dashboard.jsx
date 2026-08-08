@@ -287,7 +287,7 @@ export default function Dashboard() {
                     className="form-input"
                     style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem', width: '180px' }}
                   />
-                  <div className="flex gap-1" style={{ backgroundColor: 'rgba(0,0,0,0.3)', padding: '2px', borderRadius: 'var(--radius-full)' }}>
+                  <div className="flex gap-1" style={{ backgroundColor: 'var(--bg-tertiary)', padding: '2px', borderRadius: 'var(--radius-full)' }}>
                     <button 
                       onClick={() => setPresenceFilter('today')} 
                       className={`tab-btn ${presenceFilter === 'today' ? 'active' : ''}`}
