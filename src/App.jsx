@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { Toaster } from 'react-hot-toast';
+import { Toaster, toast } from 'react-hot-toast';
+import { useRegisterSW } from 'virtual:pwa-register/react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Dashboard from './pages/Dashboard';
@@ -59,6 +60,41 @@ function AppLayout({ children }) {
 
 function AppRoutes() {
   const { session, loading } = useAuth();
+  
+  const {
+    needRefresh: [needRefresh, setNeedRefresh],
+    updateServiceWorker,
+  } = useRegisterSW({
+    onRegistered(r) {
+      console.log('SW Registered: ' + r)
+    },
+    onRegisterError(error) {
+      console.log('SW registration error', error)
+    },
+  });
+
+  // Gérer l'alerte de mise à jour
+  React.useEffect(() => {
+    if (needRefresh) {
+      toast(
+        (t) => (
+          <div className="flex flex-col gap-2">
+            <span>Nouvelle version disponible !</span>
+            <button 
+              className="btn btn-primary" 
+              onClick={() => {
+                updateServiceWorker(true);
+                toast.dismiss(t.id);
+              }}
+            >
+              Mettre à jour
+            </button>
+          </div>
+        ),
+        { duration: Infinity, position: 'bottom-right' }
+      );
+    }
+  }, [needRefresh, updateServiceWorker]);
 
   if (loading) {
     return <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', color: 'white' }}>Chargement...</div>;
