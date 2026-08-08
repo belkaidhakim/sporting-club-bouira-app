@@ -454,7 +454,7 @@ export default function FinancialDashboard() {
             </div>
             <div className="flex justify-end gap-4 mt-2">
               <Button type="button" variant="secondary" onClick={() => setShowPaymentForm(false)}>Annuler</Button>
-              <Button type="submit" variant="primary" disabled={loading}>{editingPaymentId ? 'Mettre à jour' : 'Enregistrer'}</Button>
+              <Button type="submit" variant="primary">{editingPaymentId ? 'Mettre à jour' : 'Enregistrer'}</Button>
             </div>
           </form>
         </Card>
@@ -492,7 +492,7 @@ export default function FinancialDashboard() {
             </div>
             <div className="flex justify-end gap-4 mt-2">
               <Button type="button" variant="secondary" onClick={() => setShowDepenseForm(false)}>Annuler</Button>
-              <Button type="submit" style={{ backgroundColor: 'var(--accent-danger)', color: 'white' }} disabled={loading}>Enregistrer la dépense</Button>
+              <Button type="submit" style={{ backgroundColor: 'var(--accent-danger)', color: 'white' }}>Enregistrer la dépense</Button>
             </div>
           </form>
         </Card>

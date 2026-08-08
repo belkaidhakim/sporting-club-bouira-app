@@ -323,7 +323,7 @@ export default function AthleteForm() {
           <Button type="button" variant="secondary" onClick={() => navigate('/athletes')}>
             Annuler
           </Button>
-          <Button type="submit" variant="primary" disabled={loading}>
+          <Button type="submit" variant="primary">
             {loading ? 'Enregistrement...' : 'Enregistrer l\'athlète'}
           </Button>
         </div>
