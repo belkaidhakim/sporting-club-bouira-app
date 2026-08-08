@@ -299,7 +299,7 @@ export default function AthletesList() {
 
       {selectedAthlete && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div className="glass-panel p-6" style={{ width: '400px', position: 'relative' }}>
+          <div className="glass-panel p-6" style={{ width: '540px', maxWidth: '95vw', position: 'relative' }}>
             <button 
               onClick={() => setSelectedAthlete(null)} 
               style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: '1.5rem' }}
