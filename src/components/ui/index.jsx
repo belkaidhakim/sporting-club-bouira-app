@@ -1,17 +1,45 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 
+const cardVariants = {
+  hidden: { opacity: 0, y: 16, scale: 0.98 },
+  visible: { opacity: 1, y: 0, scale: 1 }
+};
+
 export function Card({ children, className = '', noPadding = false, ...props }) {
   return (
     <motion.div 
       className={`glass-card ${noPadding ? 'p-0' : ''} ${className}`}
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4 }}
+      variants={cardVariants}
+      initial="hidden"
+      animate="visible"
+      transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
       {...props}
     >
       {children}
     </motion.div>
+  );
+}
+
+export function StatCard({ icon, iconBg, iconColor, label, value, subtitle, glowColor }) {
+  return (
+    <Card className="flex-col gap-4">
+      <div className="flex justify-between items-center">
+        <h3 className="text-sm font-semibold text-muted mb-0">{label}</h3>
+        <div 
+          className="stat-icon" 
+          style={{ 
+            backgroundColor: iconBg, 
+            color: iconColor,
+            boxShadow: glowColor ? `0 0 16px ${glowColor}` : 'none'
+          }}
+        >
+          {icon}
+        </div>
+      </div>
+      <div className="stat-value">{value}</div>
+      {subtitle && <div className="text-sm text-muted">{subtitle}</div>}
+    </Card>
   );
 }
 
@@ -27,7 +55,8 @@ export function Skeleton({ width = '100%', height = '20px', className = '', styl
 export function Button({ children, variant = 'primary', className = '', ...props }) {
   return (
     <motion.button 
-      whileTap={{ scale: 0.95 }}
+      whileHover={{ y: -1 }}
+      whileTap={{ scale: 0.97 }}
       className={`btn btn-${variant} ${className}`}
       {...props}
     >
