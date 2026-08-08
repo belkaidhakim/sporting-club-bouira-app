@@ -16,6 +16,15 @@ const itemVariants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] } }
 };
 
+const parseHoraires = (horairesText) => {
+  if (!horairesText) return [];
+  try {
+    const parsed = JSON.parse(horairesText);
+    if (Array.isArray(parsed)) return parsed;
+  } catch {}
+  return [];
+};
+
 export default function Dashboard() {
   const [stats, setStats] = useState({
     total: 0,
@@ -52,7 +61,7 @@ export default function Dashboard() {
 
         const { data: presencesData, error: presencesError } = await supabase
           .from('presences')
-          .select(`id, date_scan, athletes (nom, prenom, groupe, groupes(nom))`)
+          .select(`id, date_scan, athletes (nom, prenom, groupe, groupes(nom, horaires))`)
           .order('date_scan', { ascending: false })
           .limit(10);
 
@@ -193,36 +202,66 @@ export default function Dashboard() {
 
             <Card className="md:col-span-2">
               <h3 className="mb-4 flex items-center gap-2" style={{ fontSize: '1rem' }}>
-                <Clock size={18} className="text-accent" /> Dernières Présences
+                <Clock size={18} className="text-accent" /> Dernières Présences (Scans récents)
               </h3>
               <div className="table-responsive">
-              <table style={{ minWidth: '400px' }}>
+              <table style={{ minWidth: '500px' }}>
                 <thead>
                   <tr>
-                    <th>Heure</th>
+                    <th>Heure Scan</th>
                     <th>Athlète</th>
                     <th>Groupe</th>
+                    <th>Planning d'entraînement</th>
                   </tr>
                 </thead>
                 <tbody>
                   {stats.recentPresences.length === 0 ? (
                     <tr>
-                      <td colSpan="3" className="text-center text-muted" style={{ padding: '2rem 0' }}>Aucun scan récent enregistré.</td>
+                      <td colSpan="4" className="text-center text-muted" style={{ padding: '2rem 0' }}>Aucun scan récent enregistré.</td>
                     </tr>
                   ) : (
-                    stats.recentPresences.map(presence => (
-                      <tr key={presence.id}>
-                        <td style={{ fontWeight: 500, color: 'var(--accent-success)' }}>
-                          {new Date(presence.date_scan).toLocaleTimeString('fr-FR', { hour: '2-digit', minute:'2-digit' })}
-                        </td>
-                        <td style={{ fontWeight: 600 }}>
-                          {presence.athletes?.nom} {presence.athletes?.prenom}
-                        </td>
-                        <td>
-                          <Badge status="ACTIVE">{presence.athletes?.groupes?.nom || presence.athletes?.groupe || '-'}</Badge>
-                        </td>
-                      </tr>
-                    ))
+                    stats.recentPresences.map(presence => {
+                      const planning = parseHoraires(presence.athletes?.groupes?.horaires);
+                      return (
+                        <tr key={presence.id}>
+                          <td style={{ fontWeight: 500, color: 'var(--accent-success)' }}>
+                            {new Date(presence.date_scan).toLocaleTimeString('fr-FR', { hour: '2-digit', minute:'2-digit' })}
+                          </td>
+                          <td style={{ fontWeight: 600 }}>
+                            {presence.athletes?.nom} {presence.athletes?.prenom}
+                          </td>
+                          <td>
+                            <Badge status="ACTIVE">{presence.athletes?.groupes?.nom || presence.athletes?.groupe || '-'}</Badge>
+                          </td>
+                          <td>
+                            {planning.length > 0 ? (
+                              <div className="flex flex-wrap gap-1">
+                                {planning.map((s, i) => (
+                                  <span key={i} style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '3px',
+                                    padding: '2px 8px',
+                                    borderRadius: 'var(--radius-full)',
+                                    backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                                    color: 'var(--accent-primary-hover)',
+                                    border: '1px solid rgba(99, 102, 241, 0.2)',
+                                    fontSize: '0.7rem',
+                                    fontWeight: 600,
+                                    fontFamily: 'Outfit'
+                                  }}>
+                                    <Clock size={10} />
+                                    {s.jour} {s.heure}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>-</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
