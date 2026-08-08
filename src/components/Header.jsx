@@ -1,9 +1,11 @@
 import React from 'react';
-import { Bell, User, Menu } from 'lucide-react';
+import { Bell, User, Menu, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 
 export default function Header({ toggleMobileMenu }) {
   const { user, role } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   
   const displayName = user?.email?.split('@')[0] || 'Utilisateur';
   const roleLabels = { admin: 'Administrateur', secretaire: 'Secrétaire', entraineur: 'Entraîneur' };
@@ -28,9 +30,30 @@ export default function Header({ toggleMobileMenu }) {
         </div>
       </div>
       
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
+        {/* Toggle Theme Button */}
+        <button 
+          onClick={toggleTheme}
+          title={theme === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}
+          style={{ 
+            background: 'var(--bg-tertiary)', 
+            border: '1px solid var(--border-color)', 
+            color: 'var(--text-primary)', 
+            cursor: 'pointer', 
+            borderRadius: 'var(--radius-md)',
+            width: '36px',
+            height: '36px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'all 0.2s'
+          }}
+        >
+          {theme === 'dark' ? <Sun size={17} style={{ color: '#f59e0b' }} /> : <Moon size={17} style={{ color: '#6366f1' }} />}
+        </button>
+
         <button style={{ 
-          background: 'rgba(255,255,255,0.04)', 
+          background: 'var(--bg-tertiary)', 
           border: '1px solid var(--border-color)', 
           color: 'var(--text-secondary)', 
           cursor: 'pointer', 

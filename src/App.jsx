@@ -20,6 +20,7 @@ const UpdatePassword = lazy(() => import('./pages/UpdatePassword'));
 const UsersManagement = lazy(() => import('./pages/UsersManagement'));
 const GroupsManagement = lazy(() => import('./pages/GroupsManagement'));
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 
 function ProtectedRoute({ children, allowedRoles }) {
   const { session, role, loading } = useAuth();
@@ -154,9 +155,11 @@ function AppRoutes() {
 
 function App() {
   return (
-    <AuthProvider>
-      <AppRoutes />
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 
