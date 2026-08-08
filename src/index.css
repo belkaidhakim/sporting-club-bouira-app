@@ -416,6 +416,8 @@ table tbody td {
 
 .sidebar {
   width: 260px;
+  min-height: 100vh;
+  height: 100vh;
   background: linear-gradient(180deg, rgba(12, 17, 32, 0.95) 0%, rgba(6, 8, 15, 0.98) 100%);
   backdrop-filter: blur(20px);
   border-right: 1px solid var(--border-color);
@@ -424,6 +426,7 @@ table tbody td {
   flex-direction: column;
   z-index: 40;
   position: relative;
+  overflow-y: auto;
 }
 
 .sidebar::after {
