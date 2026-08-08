@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
-import { Card, Button, Badge, Skeleton } from '../components/ui';
+import { Card, Button, Skeleton } from '../components/ui';
 import { Users, Clock, Edit2, Plus, UserPlus } from 'lucide-react';
 import { useGroupes } from '../hooks/useGroupes';
 import toast from 'react-hot-toast';

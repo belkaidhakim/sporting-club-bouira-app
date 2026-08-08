@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, AlertTriangle, TrendingUp, CreditCard, ScanLine, DollarSign, Clock } from 'lucide-react';
+import { Users, AlertTriangle, CreditCard, ScanLine, DollarSign, Clock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { supabase } from '../supabaseClient';

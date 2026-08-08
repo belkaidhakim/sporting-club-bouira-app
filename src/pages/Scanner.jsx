@@ -57,7 +57,7 @@ export default function Scanner() {
         }
         setAthleteData({ ...data, alreadyScanned });
       }
-    } catch (err) {
+    } catch {
       setAthleteData({ error: 'Erreur de connexion à la base de données.' });
     } finally {
       setLoading(false);

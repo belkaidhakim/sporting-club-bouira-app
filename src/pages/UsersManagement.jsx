@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
-import { Card, Button, Badge, Skeleton } from '../components/ui';
-import { Shield, ShieldAlert, User, Check, X } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { Card, Badge, Skeleton } from '../components/ui';
+import { Shield, ShieldAlert, User } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
 

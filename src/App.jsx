@@ -5,16 +5,20 @@ import { Toaster, toast } from 'react-hot-toast';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
-import Dashboard from './pages/Dashboard';
-import AthletesList from './pages/AthletesList';
-import AthleteForm from './pages/AthleteForm';
-import FinancialDashboard from './pages/FinancialDashboard';
-import Scanner from './pages/Scanner';
-import Login from './pages/Login';
-import ResetPassword from './pages/ResetPassword';
-import UpdatePassword from './pages/UpdatePassword';
-import UsersManagement from './pages/UsersManagement';
-import GroupsManagement from './pages/GroupsManagement';
+import { Suspense, lazy } from 'react';
+import { ErrorBoundary } from './components/ErrorBoundary';
+
+// Lazy load pages for code splitting
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const AthletesList = lazy(() => import('./pages/AthletesList'));
+const AthleteForm = lazy(() => import('./pages/AthleteForm'));
+const FinancialDashboard = lazy(() => import('./pages/FinancialDashboard'));
+const Scanner = lazy(() => import('./pages/Scanner'));
+const Login = lazy(() => import('./pages/Login'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const UpdatePassword = lazy(() => import('./pages/UpdatePassword'));
+const UsersManagement = lazy(() => import('./pages/UsersManagement'));
+const GroupsManagement = lazy(() => import('./pages/GroupsManagement'));
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 
 function ProtectedRoute({ children, allowedRoles }) {
@@ -62,7 +66,7 @@ function AppRoutes() {
   const { session, loading } = useAuth();
   
   const {
-    needRefresh: [needRefresh, setNeedRefresh],
+    needRefresh: [needRefresh],
     updateServiceWorker,
   } = useRegisterSW({
     onRegistered(r) {
@@ -117,29 +121,33 @@ function AppRoutes() {
           error: { iconTheme: { primary: '#f43f5e', secondary: '#fff' } }
         }} 
       />
-      <Routes>
-        <Route path="/login" element={session ? <Navigate to="/dashboard" replace /> : <Login />} />
-        <Route path="/reset-password" element={session ? <Navigate to="/dashboard" replace /> : <ResetPassword />} />
-        <Route path="/update-password" element={<UpdatePassword />} />
-        
-        {/* Public / Scanner route without sidebar */}
-        <Route path="/scanner" element={<Scanner />} />
-        
-        {/* Admin routes with layout */}
-        <Route path="/dashboard" element={<ProtectedRoute><AppLayout><Dashboard /></AppLayout></ProtectedRoute>} />
-        
-        <Route path="/athletes" element={<ProtectedRoute allowedRoles={['admin', 'secretaire', 'entraineur']}><AppLayout><AthletesList /></AppLayout></ProtectedRoute>} />
-        <Route path="/athletes/new" element={<ProtectedRoute allowedRoles={['admin', 'secretaire']}><AppLayout><AthleteForm /></AppLayout></ProtectedRoute>} />
-        <Route path="/athletes/edit/:id" element={<ProtectedRoute allowedRoles={['admin', 'secretaire']}><AppLayout><AthleteForm /></AppLayout></ProtectedRoute>} />
-        
-        <Route path="/finances" element={<ProtectedRoute allowedRoles={['admin', 'secretaire']}><AppLayout><FinancialDashboard /></AppLayout></ProtectedRoute>} />
-        
-        <Route path="/groupes" element={<ProtectedRoute allowedRoles={['admin', 'secretaire']}><AppLayout><GroupsManagement /></AppLayout></ProtectedRoute>} />
-        
-        <Route path="/users" element={<ProtectedRoute allowedRoles={['admin']}><AppLayout><UsersManagement /></AppLayout></ProtectedRoute>} />
-        
-        <Route path="*" element={<Navigate to={session ? "/dashboard" : "/login"} replace />} />
-      </Routes>
+      <ErrorBoundary>
+        <Suspense fallback={<div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', color: 'white' }}>Chargement de la page...</div>}>
+          <Routes>
+            <Route path="/login" element={session ? <Navigate to="/dashboard" replace /> : <Login />} />
+            <Route path="/reset-password" element={session ? <Navigate to="/dashboard" replace /> : <ResetPassword />} />
+            <Route path="/update-password" element={<UpdatePassword />} />
+            
+            {/* Public / Scanner route without sidebar */}
+            <Route path="/scanner" element={<Scanner />} />
+            
+            {/* Admin routes with layout */}
+            <Route path="/dashboard" element={<ProtectedRoute><AppLayout><Dashboard /></AppLayout></ProtectedRoute>} />
+            
+            <Route path="/athletes" element={<ProtectedRoute allowedRoles={['admin', 'secretaire', 'entraineur']}><AppLayout><AthletesList /></AppLayout></ProtectedRoute>} />
+            <Route path="/athletes/new" element={<ProtectedRoute allowedRoles={['admin', 'secretaire']}><AppLayout><AthleteForm /></AppLayout></ProtectedRoute>} />
+            <Route path="/athletes/edit/:id" element={<ProtectedRoute allowedRoles={['admin', 'secretaire']}><AppLayout><AthleteForm /></AppLayout></ProtectedRoute>} />
+            
+            <Route path="/finances" element={<ProtectedRoute allowedRoles={['admin', 'secretaire']}><AppLayout><FinancialDashboard /></AppLayout></ProtectedRoute>} />
+            
+            <Route path="/groupes" element={<ProtectedRoute allowedRoles={['admin', 'secretaire']}><AppLayout><GroupsManagement /></AppLayout></ProtectedRoute>} />
+            
+            <Route path="/users" element={<ProtectedRoute allowedRoles={['admin']}><AppLayout><UsersManagement /></AppLayout></ProtectedRoute>} />
+            
+            <Route path="*" element={<Navigate to={session ? "/dashboard" : "/login"} replace />} />
+          </Routes>
+        </Suspense>
+      </ErrorBoundary>
     </Router>
   );
 }

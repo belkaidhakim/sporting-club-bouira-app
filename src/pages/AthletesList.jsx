@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { Plus, Search, MoreVertical, QrCode, Edit, Printer, Download, Upload, Trash2 } from 'lucide-react';
+import { Plus, Search, QrCode, Edit, Printer, Download, Upload, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import BadgeGenerator from '../components/BadgeGenerator';

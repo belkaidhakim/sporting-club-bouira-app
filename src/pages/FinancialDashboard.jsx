@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
 import jsPDF from 'jspdf';
 import toast from 'react-hot-toast';
-import { CreditCard, TrendingUp, Search, Download, AlertTriangle, FileText, Edit, TrendingDown, DollarSign } from 'lucide-react';
+import { TrendingUp, Search, Download, AlertTriangle, FileText, Edit, TrendingDown, DollarSign } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { z } from 'zod';
 import { useCotisations } from '../hooks/useCotisations';
@@ -30,7 +30,7 @@ export default function FinancialDashboard() {
   const { user } = useAuth();
   
   const [athletes, setAthletes] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   
   const [activeTab, setActiveTab] = useState('revenus'); // 'revenus' or 'depenses'
   
@@ -272,7 +272,7 @@ export default function FinancialDashboard() {
       }
       if (expiredCount > 0) toast.success(`${expiredCount} cartes ont été expirées.`);
       else toast.success("Aucune expiration détectée.");
-    } catch (error) {
+    } catch {
       toast.error("Erreur lors de la vérification.");
     } finally {
       setLoading(false);
