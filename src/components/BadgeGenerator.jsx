@@ -69,12 +69,9 @@ export default function BadgeGenerator({ athlete, showEndDate = false }) {
             }} 
           />
           <div>
-            <h2 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, letterSpacing: '0.04em', color: '#ffffff', lineHeight: 1.1 }}>
+            <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, letterSpacing: '0.04em', color: '#ffffff', lineHeight: 1.1 }}>
               SPORTING CLUB BOUIRA
             </h2>
-            <span style={{ fontSize: '0.625rem', color: '#fbbf24', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-              République Algérienne Démocratique et Populaire
-            </span>
           </div>
         </div>
         <div style={{ 
