@@ -71,7 +71,9 @@ export default function UsersManagement() {
             <Skeleton height="50px" />
           </div>
         ) : (
-          <div className="table-responsive">
+        <>
+          {/* Version Desktop (Tableau) */}
+          <div className="responsive-table-desktop table-responsive">
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '600px' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
@@ -85,12 +87,12 @@ export default function UsersManagement() {
                   <tr key={u.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                     <td style={{ padding: '1rem 0', fontWeight: '500' }}>
                       <div className="flex items-center gap-3">
-                        <div style={{ padding: '8px', borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.1)' }}>
+                        <div style={{ padding: '8px', borderRadius: '50%', backgroundColor: 'var(--bg-tertiary)' }}>
                           <User size={18} />
                         </div>
                         <div>
                           {u.email}
-                          {u.id === currentUser?.id && <span style={{ marginLeft: '10px', fontSize: '0.75rem', color: 'var(--accent-primary)', backgroundColor: 'rgba(59, 130, 246, 0.1)', padding: '2px 6px', borderRadius: '4px' }}>Vous</span>}
+                          {u.id === currentUser?.id && <span style={{ marginLeft: '10px', fontSize: '0.75rem', color: 'var(--accent-primary)', backgroundColor: 'rgba(99, 102, 241, 0.1)', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>Vous</span>}
                         </div>
                       </div>
                     </td>
@@ -103,8 +105,8 @@ export default function UsersManagement() {
                     <td style={{ padding: '1rem 0', textAlign: 'right' }}>
                       <div className="flex justify-end gap-2">
                         <select 
-                          className="input" 
-                          style={{ padding: '0.4rem 1rem', width: 'auto', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px' }}
+                          className="form-select" 
+                          style={{ padding: '0.4rem 1rem', width: 'auto' }}
                           value={u.role}
                           onChange={(e) => handleRoleChange(u.id, e.target.value)}
                           disabled={u.id === currentUser?.id}
@@ -120,6 +122,64 @@ export default function UsersManagement() {
               </tbody>
             </table>
           </div>
+
+          {/* Version Mobile (Cartes Ergonomiques) */}
+          <div className="responsive-cards-mobile">
+            {users.map(u => (
+              <div 
+                key={u.id} 
+                className="p-4 rounded-lg flex flex-col items-center text-center" 
+                style={{ 
+                  backgroundColor: 'var(--bg-secondary)', 
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 'var(--radius-md)',
+                  boxShadow: 'var(--shadow-sm)'
+                }}
+              >
+                {/* Haut: Nom de l'utilisateur (Email + Badge) */}
+                <div className="flex items-center justify-center gap-2 mb-2 w-full">
+                  <div style={{ padding: '6px', borderRadius: '50%', backgroundColor: 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <User size={16} />
+                  </div>
+                  <span style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)' }}>{u.email}</span>
+                  {u.id === currentUser?.id && (
+                    <span style={{ fontSize: '0.7rem', color: 'var(--accent-primary)', backgroundColor: 'rgba(99, 102, 241, 0.15)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>Vous</span>
+                  )}
+                </div>
+
+                {/* Milieu: Rôle Actuel */}
+                <div className="mb-4">
+                  <Badge status={u.role === 'admin' ? 'ACTIVE' : (u.role === 'secretaire' ? 'WARNING' : 'INACTIVE')}>
+                    {u.role === 'admin' && <Shield size={12} style={{ marginRight: '4px' }} />}
+                    {u.role.toUpperCase()}
+                  </Badge>
+                </div>
+
+                {/* Bas: Bouton d'action centré */}
+                <div className="w-full flex justify-center mt-1">
+                  <select 
+                    className="form-select" 
+                    style={{ 
+                      padding: '0.5rem 1rem', 
+                      width: '100%', 
+                      maxWidth: '280px', 
+                      textAlign: 'center', 
+                      textAlignLast: 'center',
+                      fontWeight: 500
+                    }}
+                    value={u.role}
+                    onChange={(e) => handleRoleChange(u.id, e.target.value)}
+                    disabled={u.id === currentUser?.id}
+                  >
+                    <option value="admin">Administrateur (Tout accès)</option>
+                    <option value="secretaire">Secrétaire (Athlètes & Finances)</option>
+                    <option value="entraineur">Entraîneur (Scanner uniquement)</option>
+                  </select>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
         )}
       </Card>
       

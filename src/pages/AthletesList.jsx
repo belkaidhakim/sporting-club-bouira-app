@@ -200,100 +200,178 @@ export default function AthletesList() {
             <Skeleton height="40px" />
           </div>
         ) : (
-          <div className="table-responsive">
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '800px' }}>
-            <thead>
-              <tr style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-muted)' }}>
-                <th style={{ padding: '1rem', width: '40px' }}>
-                  <input 
-                    type="checkbox" 
-                    checked={filteredAthletes.length > 0 && selectedAthletes.length === filteredAthletes.length}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedAthletes(filteredAthletes.map(a => a.id));
-                      } else {
-                        setSelectedAthletes([]);
-                      }
-                    }}
-                    style={{ cursor: 'pointer', width: '16px', height: '16px' }}
-                  />
-                </th>
-                <th style={{ padding: '1rem', fontWeight: '500' }}>Nom Prénom</th>
-                <th style={{ padding: '1rem', fontWeight: '500' }}>Sexe</th>
-                <th style={{ padding: '1rem', fontWeight: '500' }}>Groupe</th>
-                <th style={{ padding: '1rem', fontWeight: '500' }}>Téléphone</th>
-                <th style={{ padding: '1rem', fontWeight: '500' }}>Statut</th>
-                <th style={{ padding: '1rem', fontWeight: '500', textAlign: 'right' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredAthletes.length === 0 ? (
-                <tr>
-                  <td colSpan="6" className="p-8 text-center text-muted">Aucun athlète trouvé.</td>
-                </tr>
-              ) : filteredAthletes.map(athlete => (
-                <tr key={athlete.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                  <td style={{ padding: '1rem' }}>
+          <>
+          {/* Version Desktop (Tableau) */}
+          <div className="responsive-table-desktop table-responsive">
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '800px' }}>
+              <thead>
+                <tr style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-muted)' }}>
+                  <th style={{ padding: '1rem', width: '40px' }}>
                     <input 
                       type="checkbox" 
-                      checked={selectedAthletes.includes(athlete.id)}
+                      checked={filteredAthletes.length > 0 && selectedAthletes.length === filteredAthletes.length}
                       onChange={(e) => {
                         if (e.target.checked) {
-                          setSelectedAthletes(prev => [...prev, athlete.id]);
+                          setSelectedAthletes(filteredAthletes.map(a => a.id));
                         } else {
-                          setSelectedAthletes(prev => prev.filter(id => id !== athlete.id));
+                          setSelectedAthletes([]);
                         }
                       }}
                       style={{ cursor: 'pointer', width: '16px', height: '16px' }}
                     />
-                  </td>
-                  <td style={{ padding: '1rem' }}>
-                    <div className="font-medium">{athlete.nom} {athlete.prenom}</div>
-                  </td>
-                  <td style={{ padding: '1rem' }}>{athlete.sexe || '-'}</td>
-                  <td style={{ padding: '1rem 0' }}>{athlete.groupes?.nom || athlete.groupe || '-'}</td>
-                  <td style={{ padding: '1rem' }}>{athlete.telephone || '-'}</td>
-                  <td style={{ padding: '1rem' }}>
-                    <button 
-                      onClick={() => toggleAccessStatus(athlete.id, athlete.cartes_acces)}
-                      style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', transition: 'opacity 0.2s' }}
-                      title="Cliquez pour changer le statut"
-                    >
-                      <Badge status={athlete.cartes_acces?.statut || (Array.isArray(athlete.cartes_acces) && athlete.cartes_acces[0]?.statut)}>
-                        {(athlete.cartes_acces?.statut === 'ACTIVE' || (Array.isArray(athlete.cartes_acces) && athlete.cartes_acces[0]?.statut === 'ACTIVE'))
-                          ? 'Active' : 'Suspendue'}
-                      </Badge>
-                    </button>
-                  </td>
-                  <td style={{ padding: '1rem', textAlign: 'right' }}>
-                    <div className="flex justify-end gap-2">
-                      <Link to={`/athletes/edit/${athlete.id}`}>
-                        <Button variant="secondary" style={{ padding: '0.4rem 0.75rem' }}>
-                          <Edit size={16} /> Modifier
-                        </Button>
-                      </Link>
-                      <Button 
-                        variant="secondary" 
-                        style={{ padding: '0.4rem 0.75rem' }}
-                        onClick={() => setSelectedAthlete(athlete)}
-                      >
-                        <QrCode size={16} /> Badge
-                      </Button>
-                      <Button 
-                        variant="secondary" 
-                        style={{ padding: '0.4rem 0.75rem', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)' }}
-                        onClick={() => handleDelete(athlete.id)}
-                        title="Archiver l'athlète"
-                      >
-                        <Trash2 size={16} />
-                      </Button>
-                    </div>
-                  </td>
+                  </th>
+                  <th style={{ padding: '1rem', fontWeight: '500' }}>Nom Prénom</th>
+                  <th style={{ padding: '1rem', fontWeight: '500' }}>Sexe</th>
+                  <th style={{ padding: '1rem', fontWeight: '500' }}>Groupe</th>
+                  <th style={{ padding: '1rem', fontWeight: '500' }}>Téléphone</th>
+                  <th style={{ padding: '1rem', fontWeight: '500' }}>Statut</th>
+                  <th style={{ padding: '1rem', fontWeight: '500', textAlign: 'right' }}>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filteredAthletes.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="p-8 text-center text-muted">Aucun athlète trouvé.</td>
+                  </tr>
+                ) : filteredAthletes.map(athlete => (
+                  <tr key={athlete.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                    <td style={{ padding: '1rem' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={selectedAthletes.includes(athlete.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedAthletes(prev => [...prev, athlete.id]);
+                          } else {
+                            setSelectedAthletes(prev => prev.filter(id => id !== athlete.id));
+                          }
+                        }}
+                        style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                      />
+                    </td>
+                    <td style={{ padding: '1rem' }}>
+                      <div className="font-medium">{athlete.nom} {athlete.prenom}</div>
+                    </td>
+                    <td style={{ padding: '1rem' }}>{athlete.sexe || '-'}</td>
+                    <td style={{ padding: '1rem 0' }}>{athlete.groupes?.nom || athlete.groupe || '-'}</td>
+                    <td style={{ padding: '1rem' }}>{athlete.telephone || '-'}</td>
+                    <td style={{ padding: '1rem' }}>
+                      <button 
+                        onClick={() => toggleAccessStatus(athlete.id, athlete.cartes_acces)}
+                        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', transition: 'opacity 0.2s' }}
+                        title="Cliquez pour changer le statut"
+                      >
+                        <Badge status={athlete.cartes_acces?.statut || (Array.isArray(athlete.cartes_acces) && athlete.cartes_acces[0]?.statut)}>
+                          {(athlete.cartes_acces?.statut === 'ACTIVE' || (Array.isArray(athlete.cartes_acces) && athlete.cartes_acces[0]?.statut === 'ACTIVE'))
+                            ? 'Active' : 'Suspendue'}
+                        </Badge>
+                      </button>
+                    </td>
+                    <td style={{ padding: '1rem', textAlign: 'right' }}>
+                      <div className="flex justify-end gap-2">
+                        <Link to={`/athletes/edit/${athlete.id}`}>
+                          <Button variant="secondary" style={{ padding: '0.4rem 0.75rem' }}>
+                            <Edit size={16} /> Modifier
+                          </Button>
+                        </Link>
+                        <Button 
+                          variant="secondary" 
+                          style={{ padding: '0.4rem 0.75rem' }}
+                          onClick={() => setSelectedAthlete(athlete)}
+                        >
+                          <QrCode size={16} /> Badge
+                        </Button>
+                        <Button 
+                          variant="secondary" 
+                          style={{ padding: '0.4rem 0.75rem', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)' }}
+                          onClick={() => handleDelete(athlete.id)}
+                        >
+                          <Trash2 size={16} />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
+
+          {/* Version Mobile (Cartes Ergonomiques) */}
+          <div className="responsive-cards-mobile">
+            {filteredAthletes.length === 0 ? (
+              <div className="p-8 text-center text-muted">Aucun athlète trouvé.</div>
+            ) : filteredAthletes.map(athlete => (
+              <div 
+                key={athlete.id}
+                className="p-4 rounded-lg flex flex-col items-center text-center"
+                style={{
+                  backgroundColor: 'var(--bg-secondary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 'var(--radius-md)',
+                  boxShadow: 'var(--shadow-sm)'
+                }}
+              >
+                {/* Haut: Checkbox + Nom Prénom + Statut */}
+                <div className="flex items-center justify-between w-full mb-3 pb-2" style={{ borderBottom: '1px solid var(--border-color)' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={selectedAthletes.includes(athlete.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedAthletes(prev => [...prev, athlete.id]);
+                      } else {
+                        setSelectedAthletes(prev => prev.filter(id => id !== athlete.id));
+                      }
+                    }}
+                    style={{ cursor: 'pointer', width: '18px', height: '18px' }}
+                  />
+                  <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)' }}>
+                    {athlete.nom} {athlete.prenom}
+                  </div>
+                  <button 
+                    onClick={() => toggleAccessStatus(athlete.id, athlete.cartes_acces)}
+                    style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                  >
+                    <Badge status={athlete.cartes_acces?.statut || (Array.isArray(athlete.cartes_acces) && athlete.cartes_acces[0]?.statut)}>
+                      {(athlete.cartes_acces?.statut === 'ACTIVE' || (Array.isArray(athlete.cartes_acces) && athlete.cartes_acces[0]?.statut === 'ACTIVE'))
+                        ? 'Active' : 'Suspendue'}
+                    </Badge>
+                  </button>
+                </div>
+
+                {/* Milieu: Détails (Groupe, Sexe & Téléphone) */}
+                <div className="flex flex-wrap justify-center gap-3 mb-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                  <div>Groupe: <strong style={{ color: 'var(--text-primary)' }}>{athlete.groupes?.nom || athlete.groupe || '-'}</strong></div>
+                  <div>Sexe: <strong style={{ color: 'var(--text-primary)' }}>{athlete.sexe || '-'}</strong></div>
+                  <div>Tél: <strong style={{ color: 'var(--text-primary)' }}>{athlete.telephone || '-'}</strong></div>
+                </div>
+
+                {/* Bas: Boutons d'action bien centrés en dessous */}
+                <div className="flex flex-wrap justify-center gap-2 w-full pt-2" style={{ borderTop: '1px solid var(--border-color)' }}>
+                  <Link to={`/athletes/edit/${athlete.id}`}>
+                    <Button variant="secondary" style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}>
+                      <Edit size={14} /> Modifier
+                    </Button>
+                  </Link>
+                  <Button 
+                    variant="secondary" 
+                    style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}
+                    onClick={() => setSelectedAthlete(athlete)}
+                  >
+                    <QrCode size={14} /> Badge
+                  </Button>
+                  <Button 
+                    variant="secondary" 
+                    style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)' }}
+                    onClick={() => handleDelete(athlete.id)}
+                  >
+                    <Trash2 size={14} />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+          </>
         )}
       </Card>
 
