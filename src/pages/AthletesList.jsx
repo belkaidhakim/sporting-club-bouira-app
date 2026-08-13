@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Search, QrCode, Edit, Printer, Download, Upload, Trash2 } from 'lucide-react';
+import { Plus, Search, QrCode, Edit, Printer, Download, Upload, Trash2, Mail, MessageSquare, Send, CheckSquare } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import BadgeGenerator from '../components/BadgeGenerator';
@@ -80,7 +80,25 @@ export default function AthletesList() {
   const [genderFilter, setGenderFilter] = useState('all');
   const [selectedAthletes, setSelectedAthletes] = useState([]);
   const [showBulkPrint, setShowBulkPrint] = useState(false);
+  const [showBulkMessageModal, setShowBulkMessageModal] = useState(false);
+  const [messageSubject, setMessageSubject] = useState("Sporting Club Bouira - Information");
+  const [messageBody, setMessageBody] = useState("");
+  const [messageTemplate, setMessageTemplate] = useState("horaire");
   const fileInputRef = useRef(null);
+
+  const handleTemplateChange = (templateType) => {
+    setMessageTemplate(templateType);
+    if (templateType === "horaire") {
+      setMessageSubject("Sporting Club Bouira - Changement d'horaire d'entraînement");
+      setMessageBody("Bonjour,\n\nNous vous informons qu'un changement d'horaire aura lieu pour les prochains entraînements. Merci de consulter le planning mis à jour auprès du club.\n\nSportivement,\nL'équipe du Sporting Club Bouira");
+    } else if (templateType === "paiement") {
+      setMessageSubject("Sporting Club Bouira - Rappel de cotisation mensuelle");
+      setMessageBody("Bonjour,\n\nCeci est un rappel concernant votre cotisation du mois. Merci de régulariser votre paiement auprès du secrétariat du club.\n\nCordialement,\nL'administration");
+    } else if (templateType === "convocation") {
+      setMessageSubject("Sporting Club Bouira - Convocation Compétition");
+      setMessageBody("Bonjour,\n\nVous êtes convoqué(e) à la prochaine rencontre sportive du club. Merci de valider votre présence auprès de votre entraîneur.\n\nSportivement,\nLe Staff Technique");
+    }
+  };
 
   useEffect(() => {
     fetchAthletes();
@@ -250,11 +268,6 @@ export default function AthletesList() {
             <Download size={18} /> Exporter
           </Button>
 
-          {selectedAthletes.length > 0 && (
-            <Button variant="secondary" onClick={() => setShowBulkPrint(true)}>
-              <Printer size={18} /> Imprimer badges ({selectedAthletes.length})
-            </Button>
-          )}
           <Link to="/athletes/new" style={{ textDecoration: 'none' }}>
             <Button variant="primary">
               <Plus size={18} /> Ajouter
@@ -262,6 +275,53 @@ export default function AthletesList() {
           </Link>
         </div>
       </div>
+
+      {/* BANDEAU D'ACTIONS EN LOT (DYNAMIQUE AU CLIC SUR LES CHECKBOXES) */}
+      {selectedAthletes.length > 0 && (
+        <div 
+          className="p-3 px-5 mb-4 rounded-xl flex flex-wrap justify-between items-center gap-4 no-print"
+          style={{
+            backgroundColor: 'rgba(99, 102, 241, 0.15)',
+            border: '1px solid rgba(99, 102, 241, 0.35)',
+            boxShadow: '0 4px 20px rgba(99, 102, 241, 0.25)',
+            backdropFilter: 'blur(8px)'
+          }}
+        >
+          <div className="flex items-center gap-3">
+            <CheckSquare size={20} style={{ color: 'var(--accent-primary-hover)' }} />
+            <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem' }}>
+              {selectedAthletes.length} membre{selectedAthletes.length > 1 ? 's' : ''} sélectionné{selectedAthletes.length > 1 ? 's' : ''}
+            </span>
+            <button 
+              onClick={() => setSelectedAthletes([])} 
+              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '0.8rem', cursor: 'pointer', textDecoration: 'underline' }}
+            >
+              Désélectionner tout
+            </button>
+          </div>
+
+          <div className="flex flex-wrap gap-3 items-center">
+            <Button 
+              variant="secondary" 
+              onClick={() => setShowBulkPrint(true)}
+              style={{ backgroundColor: 'rgba(255,255,255,0.08)', fontWeight: 600 }}
+            >
+              <Printer size={16} /> Badges en lot ({selectedAthletes.length})
+            </Button>
+
+            <Button 
+              variant="primary" 
+              onClick={() => {
+                handleTemplateChange('horaire');
+                setShowBulkMessageModal(true);
+              }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}
+            >
+              <MessageSquare size={16} /> Communication Groupée (SMS / Email)
+            </Button>
+          </div>
+        </div>
+      )}
 
       <Card noPadding>
         <div className="p-4 flex flex-wrap gap-3 items-center" style={{ borderBottom: '1px solid var(--border-color)' }}>
@@ -642,6 +702,108 @@ export default function AthletesList() {
         </div>
       )}
       </div>
+
+      {/* MODALE DE COMMUNICATION GROUPÉE (SMS / E-MAIL) */}
+      {showBulkMessageModal && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 90, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div className="glass-panel p-6" style={{ width: '650px', maxWidth: '95vw', position: 'relative', borderRadius: '16px', border: '1px solid var(--border-color)' }}>
+            <button 
+              onClick={() => setShowBulkMessageModal(false)} 
+              style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.5rem' }}
+            >
+              &times;
+            </button>
+
+            <h2 className="mb-1 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+              <MessageSquare size={22} style={{ color: 'var(--accent-primary-hover)' }} /> Communication Groupée
+            </h2>
+            <p className="text-muted text-sm mb-4">
+              Envoi d'un message aux <strong>{selectedAthletes.length} membres</strong> sélectionnés.
+            </p>
+
+            {/* Modèles de messages */}
+            <div className="mb-4">
+              <label className="form-label text-xs font-semibold text-muted mb-2 block">Modèles rapides :</label>
+              <div className="flex flex-wrap gap-2">
+                <Button 
+                  variant={messageTemplate === 'horaire' ? 'primary' : 'secondary'} 
+                  style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
+                  onClick={() => handleTemplateChange('horaire')}
+                >
+                  📢 Horaire
+                </Button>
+                <Button 
+                  variant={messageTemplate === 'paiement' ? 'primary' : 'secondary'} 
+                  style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
+                  onClick={() => handleTemplateChange('paiement')}
+                >
+                  💳 Cotisation
+                </Button>
+                <Button 
+                  variant={messageTemplate === 'convocation' ? 'primary' : 'secondary'} 
+                  style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
+                  onClick={() => handleTemplateChange('convocation')}
+                >
+                  🏆 Convocation
+                </Button>
+              </div>
+            </div>
+
+            <div className="mb-3">
+              <label className="form-label text-xs font-semibold text-muted mb-1 block">Sujet de l'e-mail / Titre :</label>
+              <input 
+                type="text" 
+                className="form-input" 
+                value={messageSubject} 
+                onChange={(e) => setMessageSubject(e.target.value)} 
+              />
+            </div>
+
+            <div className="mb-4">
+              <label className="form-label text-xs font-semibold text-muted mb-1 block">Contenu du message :</label>
+              <textarea 
+                className="form-input" 
+                rows={5} 
+                style={{ width: '100%', resize: 'vertical', fontFamily: 'inherit' }}
+                value={messageBody}
+                onChange={(e) => setMessageBody(e.target.value)}
+              />
+            </div>
+
+            {/* Boutons d'action directes */}
+            <div className="flex flex-wrap justify-between items-center gap-3 pt-3" style={{ borderTop: '1px solid var(--border-color)' }}>
+              <Button 
+                variant="secondary" 
+                onClick={() => {
+                  const selectedList = athletes.filter(a => selectedAthletes.includes(a.id));
+                  const phoneNumbers = selectedList.map(a => a.telephone).filter(Boolean).join(', ');
+                  navigator.clipboard.writeText(`Destinataires: ${phoneNumbers}\n\n${messageBody}`);
+                  toast.success(`${selectedList.length} numéros et message copiés !`);
+                }}
+              >
+                <MessageSquare size={16} /> Copier Texte & SMS ({selectedAthletes.length})
+              </Button>
+
+              <Button 
+                variant="primary"
+                onClick={() => {
+                  const selectedList = athletes.filter(a => selectedAthletes.includes(a.id));
+                  const emails = selectedList.map(a => a.email).filter(Boolean).join(',');
+                  if (!emails) {
+                    toast.error("Aucune adresse e-mail trouvée parmi les membres sélectionnés.");
+                    return;
+                  }
+                  const mailtoUrl = `mailto:?bcc=${encodeURIComponent(emails)}&subject=${encodeURIComponent(messageSubject)}&body=${encodeURIComponent(messageBody)}`;
+                  window.location.href = mailtoUrl;
+                  toast.success("Client e-mail ouvert avec les destinataires en CCI !");
+                }}
+              >
+                <Mail size={16} /> Envoyer par E-mail Groupé
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showBulkPrint && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'var(--bg-color)', zIndex: 100, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
