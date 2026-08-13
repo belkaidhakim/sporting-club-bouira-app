@@ -31,6 +31,14 @@ const formatDZ = (val) => {
   return `${num.toLocaleString('fr-FR')} DZ`;
 };
 
+const formatName = (nom = '', prenom = '') => {
+  const formattedNom = (nom || '').trim().toUpperCase();
+  const formattedPrenom = (prenom || '').trim()
+    .toLowerCase()
+    .replace(/(?:^|\s|-)\S/g, (char) => char.toUpperCase());
+  return `${formattedNom} ${formattedPrenom}`.trim() || 'Non renseigné';
+};
+
 export default function FinancialDashboard() {
   const { cotisations, loading: cotisLoading, fetchCotisations } = useCotisations();
   const { depenses, loading: depensesLoading, fetchDepenses } = useDepenses();
@@ -103,6 +111,26 @@ export default function FinancialDashboard() {
     }
     return result;
   }, [depenses, searchName, filterMonth, filterYear]);
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, searchName, filterMonth, filterYear]);
+
+  const currentList = activeTab === 'revenus' ? filteredCotisations : filteredDepenses;
+  const totalPages = Math.max(1, Math.ceil(currentList.length / ITEMS_PER_PAGE));
+
+  const paginatedCotisations = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredCotisations.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredCotisations, currentPage]);
+
+  const paginatedDepenses = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredDepenses.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredDepenses, currentPage]);
 
   const stats = useMemo(() => {
     const totalRev = cotisations.reduce((sum, c) => sum + Number(c.montant_paye), 0);
@@ -509,7 +537,7 @@ export default function FinancialDashboard() {
                 <label className="form-label">Athlète *</label>
                 <select name="athlete_id" value={formData.athlete_id} onChange={handleChange} className="form-select" required>
                   <option value="">Sélectionner un athlète</option>
-                  {athletes.map(a => <option key={a.id} value={a.id}>{a.nom} {a.prenom}</option>)}
+                  {athletes.map(a => <option key={a.id} value={a.id}>{formatName(a.nom, a.prenom)}</option>)}
                 </select>
               </div>
               <div className="form-group">
@@ -622,23 +650,29 @@ export default function FinancialDashboard() {
             <div className="p-8 flex flex-col gap-4"><Skeleton height="40px" /><Skeleton height="40px" /></div>
           ) : (
             <div className="table-responsive">
-              <table className="w-full text-left border-collapse" style={{ minWidth: '600px' }}>
+              <table className="w-full text-left border-collapse" style={{ minWidth: '650px' }}>
                 <thead>
                   <tr style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-muted)' }}>
                     <th className="p-4 font-medium">Date</th>
                     <th className="p-4 font-medium">Membre</th>
+                    <th className="p-4 font-medium">Motif / Type</th>
                     <th className="p-4 font-medium">Montant</th>
                     <th className="p-4 font-medium">Mode</th>
                     <th className="p-4 font-medium text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredCotisations.length === 0 ? (
-                    <tr><td colSpan="5" className="p-8 text-center text-muted">Aucun revenu trouvé.</td></tr>
-                  ) : filteredCotisations.map(cotis => (
+                  {paginatedCotisations.length === 0 ? (
+                    <tr><td colSpan="6" className="p-8 text-center text-muted">Aucun revenu trouvé.</td></tr>
+                  ) : paginatedCotisations.map(cotis => (
                     <tr key={cotis.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                       <td className="p-4">{new Date(cotis.date_paiement).toLocaleDateString('fr-FR')}</td>
-                      <td className="p-4 font-medium">{cotis.athletes?.nom} {cotis.athletes?.prenom}</td>
+                      <td className="p-4 font-medium">{formatName(cotis.athletes?.nom, cotis.athletes?.prenom)}</td>
+                      <td className="p-4">
+                        <span style={{ padding: '3px 10px', borderRadius: '12px', backgroundColor: 'rgba(16, 185, 129, 0.12)', color: 'var(--accent-success)', fontSize: '0.75rem', fontWeight: 600 }}>
+                          Cotisation
+                        </span>
+                      </td>
                       <td className="p-4 text-success font-semibold">+{formatDZ(cotis.montant_paye)}</td>
                       <td className="p-4">{cotis.mode_paiement}</td>
                       <td className="p-4 text-right">
@@ -661,24 +695,24 @@ export default function FinancialDashboard() {
             <div className="p-8 flex flex-col gap-4"><Skeleton height="40px" /><Skeleton height="40px" /></div>
           ) : (
             <div className="table-responsive">
-              <table className="w-full text-left border-collapse" style={{ minWidth: '600px' }}>
+              <table className="w-full text-left border-collapse" style={{ minWidth: '650px' }}>
                 <thead>
                   <tr style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-muted)' }}>
                     <th className="p-4 font-medium">Date</th>
-                    <th className="p-4 font-medium">Description</th>
+                    <th className="p-4 font-medium">Motif / Description</th>
                     <th className="p-4 font-medium">Catégorie</th>
                     <th className="p-4 font-medium text-right">Montant</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredDepenses.length === 0 ? (
+                  {paginatedDepenses.length === 0 ? (
                     <tr><td colSpan="4" className="p-8 text-center text-muted">Aucune dépense trouvée.</td></tr>
-                  ) : filteredDepenses.map(dep => (
+                  ) : paginatedDepenses.map(dep => (
                     <tr key={dep.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                       <td className="p-4">{new Date(dep.date_depense).toLocaleDateString('fr-FR')}</td>
                       <td className="p-4 font-medium">{dep.description}</td>
                       <td className="p-4">
-                        <span style={{ padding: '2px 8px', borderRadius: '4px', backgroundColor: 'rgba(255,255,255,0.1)', fontSize: '0.8rem' }}>
+                        <span style={{ padding: '3px 10px', borderRadius: '12px', backgroundColor: 'rgba(239, 68, 68, 0.12)', color: 'var(--accent-danger)', fontSize: '0.75rem', fontWeight: 600 }}>
                           {dep.categorie}
                         </span>
                       </td>
@@ -689,6 +723,38 @@ export default function FinancialDashboard() {
               </table>
             </div>
           )
+        )}
+
+        {/* PAGINATION FOOTER */}
+        {currentList.length > 0 && (
+          <div className="p-4 flex flex-wrap justify-between items-center border-t border-[rgba(255,255,255,0.05)] text-sm gap-2">
+            <span className="text-muted" style={{ fontSize: '0.85rem' }}>
+              Affichage de {(currentPage - 1) * ITEMS_PER_PAGE + 1} à {Math.min(currentPage * ITEMS_PER_PAGE, currentList.length)} sur {currentList.length} transaction(s)
+            </span>
+            {totalPages > 1 && (
+              <div className="flex gap-2 items-center">
+                <Button 
+                  variant="secondary" 
+                  style={{ padding: '0.35rem 0.85rem', fontSize: '0.8rem' }}
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                >
+                  ← Précédent
+                </Button>
+                <span style={{ fontSize: '0.8rem', padding: '0 8px', color: 'var(--text-muted)' }}>
+                  Page {currentPage} / {totalPages}
+                </span>
+                <Button 
+                  variant="secondary" 
+                  style={{ padding: '0.35rem 0.85rem', fontSize: '0.8rem' }}
+                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                >
+                  Suivant →
+                </Button>
+              </div>
+            )}
+          </div>
         )}
       </Card>
     </div>
