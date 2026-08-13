@@ -87,28 +87,54 @@ export default function UsersManagement() {
     }
   };
 
-  // Activation / Suspension du compte
+  // Activation / Suspension du compte avec fallback résilient
   const toggleUserAccountStatus = async (targetUser) => {
     if (targetUser.id === currentUser?.id) {
       toast.error("Vous ne pouvez pas désactiver votre propre compte !");
       return;
     }
 
-    const newStatus = !(targetUser.is_active !== false); // default active if undefined
+    const currentlyActive = targetUser.is_active !== false && targetUser.role !== 'inactif' && targetUser.statut !== 'SUSPENDUE';
+    const nextActive = !currentlyActive;
 
     try {
-      const { error } = await supabase
+      // 1. Tenter la mise à jour de 'is_active'
+      let { error } = await supabase
         .from('profiles')
-        .update({ is_active: newStatus })
+        .update({ is_active: nextActive })
         .eq('id', targetUser.id);
 
-      if (error) throw error;
+      // 2. Si la colonne is_active n'existe pas encore dans Supabase, tenter statut ou role
+      if (error) {
+        console.warn("Mise à jour is_active échouée, tentative fallback sur statut/role:", error.message);
+        
+        const resStatut = await supabase
+          .from('profiles')
+          .update({ statut: nextActive ? 'ACTIVE' : 'SUSPENDUE' })
+          .eq('id', targetUser.id);
 
-      toast.success(newStatus ? `Compte de ${targetUser.email} activé` : `Compte de ${targetUser.email} suspendu`);
-      setUsers(users.map(u => u.id === targetUser.id ? { ...u, is_active: newStatus } : u));
+        if (resStatut.error) {
+          const resRole = await supabase
+            .from('profiles')
+            .update({ role: nextActive ? (targetUser.previous_role || 'entraineur') : 'inactif' })
+            .eq('id', targetUser.id);
+
+          if (resRole.error) {
+            throw error; // throw original error
+          }
+        }
+      }
+
+      toast.success(nextActive ? `Compte de ${targetUser.email} activé` : `Compte de ${targetUser.email} suspendu`);
+      setUsers(users.map(u => u.id === targetUser.id ? { 
+        ...u, 
+        is_active: nextActive, 
+        statut: nextActive ? 'ACTIVE' : 'SUSPENDUE',
+        role: nextActive ? (u.role === 'inactif' ? 'entraineur' : u.role) : u.role
+      } : u));
     } catch (err) {
       console.error('Error toggling user status:', err);
-      toast.error("Erreur lors de la modification du statut du compte");
+      toast.error("Erreur statut: " + (err.message || "Erreur Supabase"));
     }
   };
 
@@ -235,7 +261,7 @@ export default function UsersManagement() {
                   </tr>
                 ) : (
                   filteredUsers.map(u => {
-                    const isActive = u.is_active !== false;
+                    const isActive = u.is_active !== false && u.role !== 'inactif' && u.statut !== 'SUSPENDUE';
                     return (
                       <tr key={u.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
                         <td style={{ padding: '1rem 0', fontWeight: '500' }}>
