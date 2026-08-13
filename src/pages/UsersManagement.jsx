@@ -1,13 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
-import { Card, Badge, Skeleton } from '../components/ui';
-import { Shield, ShieldAlert, User } from 'lucide-react';
+import { Card, Badge, Skeleton, Button } from '../components/ui';
+import { Shield, ShieldAlert, User, UserPlus, Search, Filter, Loader, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function UsersManagement() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [roleFilter, setRoleFilter] = useState('all');
+  
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [newEmail, setNewEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newRole, setNewRole] = useState('entraineur');
+  const [createLoading, setCreateLoading] = useState(false);
+
   const { user: currentUser } = useAuth();
 
   useEffect(() => {
@@ -54,16 +64,104 @@ export default function UsersManagement() {
     }
   };
 
+  const handleCreateUser = async (e) => {
+    e.preventDefault();
+    if (!newEmail || !newPassword) {
+      toast.error("Veuillez remplir l'email et le mot de passe.");
+      return;
+    }
+
+    try {
+      setCreateLoading(true);
+      // Inscription auth Supabase
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: newEmail,
+        password: newPassword,
+      });
+
+      if (authError) throw authError;
+
+      if (authData?.user) {
+        // Mise à jour ou insertion dans la table profiles
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .upsert({
+            id: authData.user.id,
+            email: newEmail,
+            role: newRole
+          });
+
+        if (profileError) {
+          console.warn("Mise à jour du profil:", profileError);
+        }
+      }
+
+      toast.success(`Le membre ${newEmail} a été ajouté avec succès !`);
+      setIsModalOpen(false);
+      setNewEmail('');
+      setNewPassword('');
+      setNewRole('entraineur');
+      fetchUsers();
+    } catch (err) {
+      toast.error(err.message || "Erreur lors de la création du membre.");
+    } finally {
+      setCreateLoading(false);
+    }
+  };
+
+  // Utilisateurs filtrés
+  const filteredUsers = users.filter(u => {
+    const matchesSearch = (u.email || '').toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesRole = roleFilter === 'all' || u.role === roleFilter;
+    return matchesSearch && matchesRole;
+  });
+
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
+      {/* Header avec CTA Ajouter un membre */}
+      <div className="flex flex-wrap justify-between items-center mb-6 gap-4">
         <div>
           <h1>Gestion de l'Équipe</h1>
-          <p>Gérez les accès et les rôles des membres de l'administration.</p>
+          <p style={{ marginBottom: 0 }}>Gérez les accès et les rôles des membres de l'administration.</p>
         </div>
+        <Button variant="primary" onClick={() => setIsModalOpen(true)}>
+          <UserPlus size={18} /> + Ajouter un membre
+        </Button>
       </div>
 
       <Card>
+        {/* Barre de Recherche et Filtres */}
+        <div className="flex flex-wrap justify-between items-center mb-6 gap-3 pb-4" style={{ borderBottom: '1px solid var(--border-color)' }}>
+          <div className="flex items-center gap-2" style={{ flex: 1, minWidth: '220px' }}>
+            <div style={{ position: 'relative', width: '100%', maxWidth: '320px' }}>
+              <Search size={16} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              <input
+                type="text"
+                placeholder="Rechercher par email..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="form-input"
+                style={{ paddingLeft: '2.25rem', fontSize: '0.85rem' }}
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Filter size={16} style={{ color: 'var(--text-muted)' }} />
+            <select
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+              className="form-select"
+              style={{ width: 'auto', padding: '0.4rem 1rem', fontSize: '0.85rem' }}
+            >
+              <option value="all">Tous les rôles ({users.length})</option>
+              <option value="admin">Administrateurs ({users.filter(u => u.role === 'admin').length})</option>
+              <option value="secretaire">Secrétaires ({users.filter(u => u.role === 'secretaire').length})</option>
+              <option value="entraineur">Entraîneurs ({users.filter(u => u.role === 'entraineur').length})</option>
+            </select>
+          </div>
+        </div>
+
         {loading ? (
           <div className="flex flex-col gap-4">
             <Skeleton height="50px" />
@@ -83,105 +181,186 @@ export default function UsersManagement() {
                 </tr>
               </thead>
               <tbody>
-                {users.map(u => (
-                  <tr key={u.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <td style={{ padding: '1rem 0', fontWeight: '500' }}>
-                      <div className="flex items-center gap-3">
-                        <div style={{ padding: '8px', borderRadius: '50%', backgroundColor: 'var(--bg-tertiary)' }}>
-                          <User size={18} />
-                        </div>
-                        <div>
-                          {u.email}
-                          {u.id === currentUser?.id && <span style={{ marginLeft: '10px', fontSize: '0.75rem', color: 'var(--accent-primary)', backgroundColor: 'rgba(99, 102, 241, 0.1)', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>Vous</span>}
-                        </div>
-                      </div>
-                    </td>
-                    <td style={{ padding: '1rem 0' }}>
-                      <Badge status={u.role === 'admin' ? 'ACTIVE' : (u.role === 'secretaire' ? 'WARNING' : 'INACTIVE')}>
-                        {u.role === 'admin' && <Shield size={12} style={{ marginRight: '4px' }} />}
-                        {u.role.toUpperCase()}
-                      </Badge>
-                    </td>
-                    <td style={{ padding: '1rem 0', textAlign: 'right' }}>
-                      <div className="flex justify-end gap-2">
-                        <select 
-                          className="form-select" 
-                          style={{ padding: '0.4rem 1rem', width: 'auto' }}
-                          value={u.role}
-                          onChange={(e) => handleRoleChange(u.id, e.target.value)}
-                          disabled={u.id === currentUser?.id}
-                        >
-                          <option value="admin">Administrateur (Tout accès)</option>
-                          <option value="secretaire">Secrétaire (Athlètes & Finances)</option>
-                          <option value="entraineur">Entraîneur (Scanner uniquement)</option>
-                        </select>
-                      </div>
-                    </td>
+                {filteredUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan="3" className="p-8 text-center text-muted">Aucun membre trouvé pour ces critères.</td>
                   </tr>
-                ))}
+                ) : (
+                  filteredUsers.map(u => (
+                    <tr key={u.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <td style={{ padding: '1rem 0', fontWeight: '500' }}>
+                        <div className="flex items-center gap-3">
+                          <div style={{ padding: '8px', borderRadius: '50%', backgroundColor: 'var(--bg-tertiary)' }}>
+                            <User size={18} />
+                          </div>
+                          <div>
+                            {u.email}
+                            {u.id === currentUser?.id && <span style={{ marginLeft: '10px', fontSize: '0.75rem', color: 'var(--accent-primary)', backgroundColor: 'rgba(99, 102, 241, 0.1)', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>Vous</span>}
+                          </div>
+                        </div>
+                      </td>
+                      <td style={{ padding: '1rem 0' }}>
+                        <Badge status={u.role === 'admin' ? 'ACTIVE' : (u.role === 'secretaire' ? 'WARNING' : 'INACTIVE')}>
+                          {u.role === 'admin' && <Shield size={12} style={{ marginRight: '4px' }} />}
+                          {u.role ? u.role.toUpperCase() : 'MEMBRE'}
+                        </Badge>
+                      </td>
+                      <td style={{ padding: '1rem 0', textAlign: 'right' }}>
+                        <div className="flex justify-end gap-2">
+                          <select 
+                            className="form-select" 
+                            style={{ padding: '0.4rem 1rem', width: 'auto' }}
+                            value={u.role || 'entraineur'}
+                            onChange={(e) => handleRoleChange(u.id, e.target.value)}
+                            disabled={u.id === currentUser?.id}
+                          >
+                            <option value="admin">Administrateur (Tout accès)</option>
+                            <option value="secretaire">Secrétaire (Athlètes & Finances)</option>
+                            <option value="entraineur">Entraîneur (Scanner uniquement)</option>
+                          </select>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
 
           {/* Version Mobile (Cartes Ergonomiques) */}
           <div className="responsive-cards-mobile">
-            {users.map(u => (
-              <div 
-                key={u.id} 
-                className="p-4 rounded-lg flex flex-col items-center text-center" 
-                style={{ 
-                  backgroundColor: 'var(--bg-secondary)', 
-                  border: '1px solid var(--border-color)',
-                  borderRadius: 'var(--radius-md)',
-                  boxShadow: 'var(--shadow-sm)'
-                }}
-              >
-                {/* Haut: Nom de l'utilisateur (Email + Badge) */}
-                <div className="flex items-center justify-center gap-2 mb-2 w-full">
-                  <div style={{ padding: '6px', borderRadius: '50%', backgroundColor: 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <User size={16} />
+            {filteredUsers.length === 0 ? (
+              <div className="p-8 text-center text-muted">Aucun membre trouvé.</div>
+            ) : (
+              filteredUsers.map(u => (
+                <div 
+                  key={u.id} 
+                  className="p-4 rounded-lg flex flex-col items-center text-center" 
+                  style={{ 
+                    backgroundColor: 'var(--bg-secondary)', 
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 'var(--radius-md)',
+                    boxShadow: 'var(--shadow-sm)'
+                  }}
+                >
+                  {/* Haut: Nom de l'utilisateur (Email + Badge) */}
+                  <div className="flex items-center justify-center gap-2 mb-2 w-full">
+                    <div style={{ padding: '6px', borderRadius: '50%', backgroundColor: 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <User size={16} />
+                    </div>
+                    <span style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)' }}>{u.email}</span>
+                    {u.id === currentUser?.id && (
+                      <span style={{ fontSize: '0.7rem', color: 'var(--accent-primary)', backgroundColor: 'rgba(99, 102, 241, 0.15)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>Vous</span>
+                    )}
                   </div>
-                  <span style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)' }}>{u.email}</span>
-                  {u.id === currentUser?.id && (
-                    <span style={{ fontSize: '0.7rem', color: 'var(--accent-primary)', backgroundColor: 'rgba(99, 102, 241, 0.15)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>Vous</span>
-                  )}
-                </div>
 
-                {/* Milieu: Rôle Actuel */}
-                <div className="mb-4">
-                  <Badge status={u.role === 'admin' ? 'ACTIVE' : (u.role === 'secretaire' ? 'WARNING' : 'INACTIVE')}>
-                    {u.role === 'admin' && <Shield size={12} style={{ marginRight: '4px' }} />}
-                    {u.role.toUpperCase()}
-                  </Badge>
-                </div>
+                  {/* Milieu: Rôle Actuel */}
+                  <div className="mb-4">
+                    <Badge status={u.role === 'admin' ? 'ACTIVE' : (u.role === 'secretaire' ? 'WARNING' : 'INACTIVE')}>
+                      {u.role === 'admin' && <Shield size={12} style={{ marginRight: '4px' }} />}
+                      {u.role ? u.role.toUpperCase() : 'MEMBRE'}
+                    </Badge>
+                  </div>
 
-                {/* Bas: Bouton d'action centré */}
-                <div className="w-full flex justify-center mt-1">
-                  <select 
-                    className="form-select" 
-                    style={{ 
-                      padding: '0.5rem 1rem', 
-                      width: '100%', 
-                      maxWidth: '280px', 
-                      textAlign: 'center', 
-                      textAlignLast: 'center',
-                      fontWeight: 500
-                    }}
-                    value={u.role}
-                    onChange={(e) => handleRoleChange(u.id, e.target.value)}
-                    disabled={u.id === currentUser?.id}
-                  >
-                    <option value="admin">Administrateur (Tout accès)</option>
-                    <option value="secretaire">Secrétaire (Athlètes & Finances)</option>
-                    <option value="entraineur">Entraîneur (Scanner uniquement)</option>
-                  </select>
+                  {/* Bas: Bouton d'action centré */}
+                  <div className="w-full flex justify-center mt-1">
+                    <select 
+                      className="form-select" 
+                      style={{ 
+                        padding: '0.5rem 1rem', 
+                        width: '100%', 
+                        maxWidth: '280px', 
+                        textAlign: 'center', 
+                        textAlignLast: 'center',
+                        fontWeight: 500
+                      }}
+                      value={u.role || 'entraineur'}
+                      onChange={(e) => handleRoleChange(u.id, e.target.value)}
+                      disabled={u.id === currentUser?.id}
+                    >
+                      <option value="admin">Administrateur (Tout accès)</option>
+                      <option value="secretaire">Secrétaire (Athlètes & Finances)</option>
+                      <option value="entraineur">Entraîneur (Scanner uniquement)</option>
+                    </select>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </>
         )}
       </Card>
+
+      {/* MODAL AJOUT D'UN MEMBRE */}
+      {isModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <Card style={{ width: '100%', maxWidth: '480px', margin: '1rem', position: 'relative' }}>
+            <button 
+              onClick={() => setIsModalOpen(false)}
+              style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+            >
+              <X size={20} />
+            </button>
+
+            <h2 className="mb-1 flex items-center gap-2">
+              <UserPlus size={22} className="text-accent" /> Ajouter un Membre à l'Équipe
+            </h2>
+            <p className="text-sm text-muted mb-6">Créez le compte d'accès pour un nouvel entraîneur ou secrétaire.</p>
+
+            <form onSubmit={handleCreateUser} className="flex flex-col gap-4">
+              <div className="form-group">
+                <label className="form-label">Adresse Email *</label>
+                <input 
+                  type="email" 
+                  className="form-input" 
+                  required 
+                  placeholder="exemple@sportingclub.com"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  disabled={createLoading}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Mot de passe initial *</label>
+                <input 
+                  type="password" 
+                  className="form-input" 
+                  required 
+                  placeholder="Au moins 6 caractères"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  disabled={createLoading}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Rôle Attribué *</label>
+                <select 
+                  className="form-select"
+                  value={newRole}
+                  onChange={(e) => setNewRole(e.target.value)}
+                  disabled={createLoading}
+                >
+                  <option value="entraineur">Entraîneur (Accès Scanner uniquement)</option>
+                  <option value="secretaire">Secrétaire (Gestion Athlètes & Finances)</option>
+                  <option value="admin">Administrateur (Tout accès)</option>
+                </select>
+              </div>
+
+              <div className="flex gap-3 justify-end mt-4">
+                <Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)} disabled={createLoading}>
+                  Annuler
+                </Button>
+                <Button type="submit" variant="primary" disabled={createLoading}>
+                  {createLoading ? <Loader className="animate-spin" size={16} /> : <UserPlus size={16} />}
+                  Créer le membre
+                </Button>
+              </div>
+            </form>
+          </Card>
+        </div>
+      )}
       
       <div className="mt-6">
         <Card className="flex gap-4 items-start" style={{ backgroundColor: 'rgba(59, 130, 246, 0.05)', borderColor: 'rgba(59, 130, 246, 0.2)' }}>
