@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { Card, Button, Skeleton } from '../components/ui';
-import { Users, Edit2, Plus, CalendarDays, Clock, Trash2 } from 'lucide-react';
+import { Users, Edit2, Plus, CalendarDays, Clock, Trash2, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const parseHoraires = (horairesText) => {
@@ -23,13 +23,22 @@ const getTrainerDisplayName = (profile) => {
   }
   if (profile.email) {
     const username = profile.email.split('@')[0];
-    const formatted = username
+    const words = username
       .replace(/[._\d]+/g, ' ')
       .trim()
-      .split(' ')
+      .split(/\s+/);
+
+    const formatted = words
       .map(w => w.charAt(0).toUpperCase() + w.slice(1))
       .join(' ');
-    const initial = formatted.charAt(0).toUpperCase() || 'E';
+
+    let initial = 'E';
+    if (words.length >= 2) {
+      initial = (words[0].charAt(0) + words[1].charAt(0)).toUpperCase();
+    } else if (words.length === 1 && words[0].length > 0) {
+      initial = words[0].charAt(0).toUpperCase();
+    }
+
     return { name: formatted || profile.email, initial };
   }
   return { name: 'Entraîneur', initial: 'E' };
@@ -52,7 +61,7 @@ export default function GroupsManagement() {
   });
   
   // State structuré du planning
-  const [planning, setPlanning] = useState([]); // Array d'objets { jour: 'Mardi', heure: '10:30' }
+  const [planning, setPlanning] = useState([]);
   const [selectedJour, setSelectedJour] = useState('Dimanche');
   const [selectedHeure, setSelectedHeure] = useState('10:00');
 
@@ -169,9 +178,9 @@ export default function GroupsManagement() {
 
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Skeleton height="260px" />
-          <Skeleton height="260px" />
-          <Skeleton height="260px" />
+          <Skeleton height="270px" />
+          <Skeleton height="270px" />
+          <Skeleton height="270px" />
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
@@ -181,10 +190,22 @@ export default function GroupsManagement() {
             const percentage = Math.min(100, Math.round((inscrits / capacite) * 100));
             const planningData = parseHoraires(groupe.horaires);
             const trainerInfo = getTrainerDisplayName(groupe.profiles);
+            const hasTrainer = Boolean(groupe.profiles);
+
+            // Code couleur dynamique de remplissage
+            let progressColor = '#10b981'; // Vert < 50%
+            let statusBadgeText = 'Places disponibles';
             
-            let progressColor = 'var(--accent-success)';
-            if (percentage >= 100) progressColor = 'var(--accent-danger)';
-            else if (percentage >= 80) progressColor = 'var(--accent-warning)';
+            if (percentage >= 100) {
+              progressColor = '#ef4444'; // Rouge >= 100%
+              statusBadgeText = 'Groupe complet';
+            } else if (percentage >= 80) {
+              progressColor = '#f59e0b'; // Orange >= 80% (ex: 16/20)
+              statusBadgeText = 'Quasiment complet';
+            } else if (percentage >= 50) {
+              progressColor = '#3b82f6'; // Bleu >= 50%
+              statusBadgeText = 'Remplissage régulier';
+            }
 
             return (
               <Card 
@@ -213,26 +234,46 @@ export default function GroupsManagement() {
                     </div>
                     
                     <div className="flex flex-col gap-3 mb-4">
-                      {/* Entraîneur avec Avatar Circulaire et Nom soigné */}
-                      <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                        <div style={{
-                          width: '26px',
-                          height: '26px',
-                          borderRadius: '50%',
-                          backgroundColor: 'rgba(99, 102, 241, 0.15)',
-                          color: 'var(--accent-primary)',
-                          fontWeight: 700,
-                          fontSize: '0.75rem',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          border: '1px solid rgba(99, 102, 241, 0.3)',
-                          flexShrink: 0
-                        }}>
-                          {trainerInfo.initial}
+                      {/* Entraîneur : Alerte douce si Non assigné, sinon Avatar + Nom */}
+                      {!hasTrainer ? (
+                        <div className="flex items-center gap-2 text-sm">
+                          <div style={{
+                            padding: '4px 10px',
+                            borderRadius: 'var(--radius-full)',
+                            backgroundColor: 'rgba(245, 158, 11, 0.12)',
+                            color: '#f59e0b',
+                            border: '1px solid rgba(245, 158, 11, 0.3)',
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px'
+                          }}>
+                            <AlertTriangle size={13} />
+                            Entraîneur non assigné
+                          </div>
                         </div>
-                        <span>Entraîneur: <strong style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{trainerInfo.name}</strong></span>
-                      </div>
+                      ) : (
+                        <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                          <div style={{
+                            width: '26px',
+                            height: '26px',
+                            borderRadius: '50%',
+                            backgroundColor: 'rgba(99, 102, 241, 0.15)',
+                            color: 'var(--accent-primary)',
+                            fontWeight: 700,
+                            fontSize: '0.75rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            border: '1px solid rgba(99, 102, 241, 0.3)',
+                            flexShrink: 0
+                          }}>
+                            {trainerInfo.initial}
+                          </div>
+                          <span>Entraîneur: <strong style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{trainerInfo.name}</strong></span>
+                        </div>
+                      )}
                       
                       {/* Planning affiché sous forme de pilules */}
                       <div className="flex items-start gap-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
@@ -267,27 +308,39 @@ export default function GroupsManagement() {
                     </div>
                   </div>
 
-                  {/* Section Remplissage toujours alignée parfaitement en bas */}
+                  {/* Section Remplissage Dynamique avec Code Couleur */}
                   <div className="mt-auto pt-4" style={{ borderTop: '1px solid var(--border-color)' }}>
                     <div className="flex justify-between items-center mb-2 text-sm">
-                      <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}><Users size={14} /> Remplissage</span>
-                      <span style={{ fontWeight: 'bold' }}>{inscrits} / {capacite}</span>
+                      <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <Users size={14} /> Remplissage
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: progressColor }}>
+                          {percentage}%
+                        </span>
+                        <span style={{ fontWeight: 'bold' }}>{inscrits} / {capacite}</span>
+                      </div>
                     </div>
-                    <div style={{ width: '100%', height: '6px', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
+                    
+                    <div style={{ width: '100%', height: '7px', backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: '4px', overflow: 'hidden' }}>
                       <div 
                         style={{ 
                           height: '100%', 
                           width: `${percentage}%`, 
                           backgroundColor: progressColor,
-                          borderRadius: '3px',
+                          borderRadius: '4px',
                           transition: 'width 0.5s ease-out',
-                          boxShadow: `0 0 8px ${progressColor}40`
+                          boxShadow: `0 0 8px ${progressColor}50`
                         }} 
                       />
                     </div>
-                    {percentage >= 100 && (
-                      <div className="text-xs mt-2" style={{ color: 'var(--accent-danger)', textAlign: 'right', fontWeight: 600 }}>Groupe complet</div>
-                    )}
+
+                    <div className="flex justify-between items-center mt-2" style={{ fontSize: '0.75rem' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Capacité: {capacite} athlètes</span>
+                      <span style={{ color: progressColor, fontWeight: 700 }}>
+                        {statusBadgeText}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </Card>
