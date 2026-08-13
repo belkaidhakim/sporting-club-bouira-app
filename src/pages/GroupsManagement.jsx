@@ -66,15 +66,14 @@ export default function GroupsManagement() {
       
       const { data: groupesData, error: gError } = await supabase
         .from('groupes')
-        .select(`*, profiles:entraineur_id (id, email, nom, prenom), athletes (id)`)
+        .select(`*, profiles:entraineur_id (id, email), athletes (id)`)
         .order('nom');
 
       if (gError) throw gError;
 
       const { data: trainersData, error: tError } = await supabase
         .from('profiles')
-        .select('id, email, nom, prenom')
-        .in('role', ['entraineur', 'admin']);
+        .select('id, email, role');
 
       if (tError) console.error("Error fetching trainers:", tError);
 
@@ -82,7 +81,7 @@ export default function GroupsManagement() {
       setTrainers(trainersData || []);
     } catch (error) {
       console.error('Error fetching groups data:', error);
-      toast.error('Erreur lors du chargement des groupes');
+      toast.error('Erreur lors du chargement des groupes: ' + (error.message || ''));
     } finally {
       setLoading(false);
     }
