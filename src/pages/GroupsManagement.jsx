@@ -1,110 +1,136 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { Card, Button, Skeleton } from '../components/ui';
-import { Users, Clock, Edit2, Plus, UserPlus, Trash2, CalendarDays } from 'lucide-react';
-import { useGroupes } from '../hooks/useGroupes';
+import { Users, Edit2, Plus, CalendarDays, Clock, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-const JOURS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+const parseHoraires = (horairesText) => {
+  if (!horairesText) return [];
+  try {
+    const parsed = JSON.parse(horairesText);
+    if (Array.isArray(parsed)) return parsed;
+  } catch {}
+  return [];
+};
+
+const getTrainerDisplayName = (profile) => {
+  if (!profile) return { name: 'Non assigné', initial: '?' };
+  if (profile.nom && profile.prenom) {
+    return { 
+      name: `${profile.prenom} ${profile.nom}`, 
+      initial: `${profile.prenom[0]}${profile.nom[0]}`.toUpperCase() 
+    };
+  }
+  if (profile.email) {
+    const username = profile.email.split('@')[0];
+    const formatted = username
+      .replace(/[._\d]+/g, ' ')
+      .trim()
+      .split(' ')
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+    const initial = formatted.charAt(0).toUpperCase() || 'E';
+    return { name: formatted || profile.email, initial };
+  }
+  return { name: 'Entraîneur', initial: 'E' };
+};
+
+const JOURS_SEMAINE = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 
 export default function GroupsManagement() {
-  const { groupes, loading, fetchGroupes } = useGroupes();
+  const [groupes, setGroupes] = useState([]);
   const [trainers, setTrainers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  
+  // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState(null);
-  
   const [formData, setFormData] = useState({
     nom: '',
     capacite_max: 20,
-    entraineur_id: '',
-    horaires: ''
+    entraineur_id: ''
   });
-
-  // Planning structuré : tableau de { jour, heure }
-  const [planning, setPlanning] = useState([]);
-  const [newJour, setNewJour] = useState('Dimanche');
-  const [newHeure, setNewHeure] = useState('10:00');
+  
+  // State structuré du planning
+  const [planning, setPlanning] = useState([]); // Array d'objets { jour: 'Mardi', heure: '10:30' }
+  const [selectedJour, setSelectedJour] = useState('Dimanche');
+  const [selectedHeure, setSelectedHeure] = useState('10:00');
 
   useEffect(() => {
-    async function fetchTrainers() {
-      const { data } = await supabase
-        .from('profiles')
-        .select('id, email')
-        .eq('role', 'entraineur');
-      if (data) setTrainers(data);
-    }
-    fetchTrainers();
+    fetchData();
   }, []);
 
-  // Parse le texte horaires en tableau structuré
-  const parseHoraires = (horairesText) => {
-    if (!horairesText) return [];
+  async function fetchData() {
     try {
-      const parsed = JSON.parse(horairesText);
-      if (Array.isArray(parsed)) return parsed;
-    } catch {
-      // Si ce n'est pas du JSON, essayer de parser le texte libre
+      setLoading(true);
+      
+      const { data: groupesData, error: gError } = await supabase
+        .from('groupes')
+        .select(`*, profiles:entraineur_id (id, email, nom, prenom), athletes (id)`)
+        .order('nom');
+
+      if (gError) throw gError;
+
+      const { data: trainersData, error: tError } = await supabase
+        .from('profiles')
+        .select('id, email, nom, prenom')
+        .in('role', ['entraineur', 'admin']);
+
+      if (tError) console.error("Error fetching trainers:", tError);
+
+      setGroupes(groupesData || []);
+      setTrainers(trainersData || []);
+    } catch (error) {
+      console.error('Error fetching groups data:', error);
+      toast.error('Erreur lors du chargement des groupes');
+    } finally {
+      setLoading(false);
     }
-    return [];
-  };
+  }
 
-  // Convertir le planning en texte stockable
-  const planningToString = (planningArr) => {
-    return JSON.stringify(planningArr);
-  };
-
-  // Formater pour l'affichage
-  const formatPlanning = (planningArr) => {
-    if (!planningArr || planningArr.length === 0) return null;
-    return planningArr.map(s => `${s.jour} ${s.heure}`).join(' · ');
+  const handleOpenModal = (groupe = null) => {
+    if (groupe) {
+      setEditingGroup(groupe);
+      setFormData({
+        nom: groupe.nom || '',
+        capacite_max: groupe.capacite_max || 20,
+        entraineur_id: groupe.entraineur_id || ''
+      });
+      setPlanning(parseHoraires(groupe.horaires));
+    } else {
+      setEditingGroup(null);
+      setFormData({
+        nom: '',
+        capacite_max: 20,
+        entraineur_id: ''
+      });
+      setPlanning([]);
+    }
+    setIsModalOpen(true);
   };
 
   const addSeance = () => {
-    // Vérifier qu'il n'existe pas déjà
-    const exists = planning.some(s => s.jour === newJour && s.heure === newHeure);
+    if (!selectedJour || !selectedHeure) return;
+    const exists = planning.some(s => s.jour === selectedJour && s.heure === selectedHeure);
     if (exists) {
-      toast.error('Cette séance existe déjà dans le planning.');
+      toast.error("Ce créneau existe déjà dans le planning");
       return;
     }
-    setPlanning(prev => [...prev, { jour: newJour, heure: newHeure }]);
+    setPlanning([...planning, { jour: selectedJour, heure: selectedHeure }]);
   };
 
   const removeSeance = (index) => {
-    setPlanning(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const handleEdit = (groupe) => {
-    setEditingGroup(groupe);
-    setFormData({
-      nom: groupe.nom,
-      capacite_max: groupe.capacite_max || 20,
-      entraineur_id: groupe.entraineur_id || '',
-      horaires: groupe.horaires || ''
-    });
-    setPlanning(parseHoraires(groupe.horaires));
-    setIsModalOpen(true);
-  };
-
-  const handleNew = () => {
-    setEditingGroup(null);
-    setFormData({
-      nom: '',
-      capacite_max: 20,
-      entraineur_id: '',
-      horaires: ''
-    });
-    setPlanning([]);
-    setIsModalOpen(true);
+    setPlanning(planning.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
       const payload = {
-        ...formData,
+        nom: formData.nom,
+        capacite_max: parseInt(formData.capacite_max, 10),
         entraineur_id: formData.entraineur_id || null,
-        capacite_max: parseInt(formData.capacite_max),
-        horaires: planningToString(planning)
+        horaires: JSON.stringify(planning)
       };
 
       if (editingGroup) {
@@ -113,18 +139,20 @@ export default function GroupsManagement() {
           .update(payload)
           .eq('id', editingGroup.id);
         if (error) throw error;
-        toast.success("Groupe mis à jour avec succès");
+        toast.success('Groupe mis à jour');
       } else {
         const { error } = await supabase
           .from('groupes')
           .insert([payload]);
         if (error) throw error;
-        toast.success("Nouveau groupe créé avec succès");
+        toast.success('Groupe créé');
       }
+
       setIsModalOpen(false);
-      fetchGroupes();
-    } catch (err) {
-      toast.error(err.message || "Erreur lors de l'enregistrement");
+      fetchData();
+    } catch (error) {
+      console.error('Error saving group:', error);
+      toast.error('Erreur lors de l\'enregistrement du groupe');
     }
   };
 
@@ -132,104 +160,136 @@ export default function GroupsManagement() {
     <div>
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1>Groupes & Plannings</h1>
-          <p style={{ marginBottom: 0 }}>Gérez les capacités, horaires et entraîneurs.</p>
+          <h1>Gestion des Groupes</h1>
+          <p style={{ marginBottom: 0 }}>Configurez les catégories, entraîneurs et les créneaux d'entraînement.</p>
         </div>
-        <Button variant="primary" onClick={handleNew}>
-          <Plus size={18} /> Nouveau Groupe
+        <Button variant="primary" onClick={() => handleOpenModal()}>
+          <Plus size={16} /> Nouveau Groupe
         </Button>
       </div>
 
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Skeleton height="220px" />
-          <Skeleton height="220px" />
-          <Skeleton height="220px" />
+          <Skeleton height="260px" />
+          <Skeleton height="260px" />
+          <Skeleton height="260px" />
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
           {groupes.map(groupe => {
             const inscrits = groupe.athletes ? groupe.athletes.length : 0;
             const capacite = groupe.capacite_max || 20;
             const percentage = Math.min(100, Math.round((inscrits / capacite) * 100));
             const planningData = parseHoraires(groupe.horaires);
+            const trainerInfo = getTrainerDisplayName(groupe.profiles);
             
             let progressColor = 'var(--accent-success)';
             if (percentage >= 100) progressColor = 'var(--accent-danger)';
             else if (percentage >= 80) progressColor = 'var(--accent-warning)';
 
             return (
-              <Card key={groupe.id} className="flex-col justify-between" style={{ padding: '1.5rem' }}>
-                <div>
-                  <div className="flex justify-between items-start mb-4">
-                    <h2 style={{ fontSize: '1.25rem', margin: 0 }}>{groupe.nom}</h2>
-                    <button 
-                      onClick={() => handleEdit(groupe)}
-                      style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px' }}
-                    >
-                      <Edit2 size={16} />
-                    </button>
-                  </div>
-                  
-                  <div className="flex flex-col gap-3 mb-4">
-                    <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                      <UserPlus size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-                      <span>Entraîneur: <strong style={{ color: 'var(--text-primary)' }}>{groupe.profiles?.email || 'Non assigné'}</strong></span>
+              <Card 
+                key={groupe.id} 
+                style={{ 
+                  padding: '1.5rem', 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  justify: 'space-between',
+                  height: '100%',
+                  minHeight: '270px'
+                }}
+              >
+                <div className="flex-1 flex flex-col justify-between">
+                  <div>
+                    {/* Entête Carte */}
+                    <div className="flex justify-between items-start mb-4">
+                      <h2 style={{ fontSize: '1.25rem', margin: 0, fontWeight: 700 }}>{groupe.nom}</h2>
+                      <button 
+                        onClick={() => handleOpenModal(groupe)}
+                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px' }}
+                        title="Modifier le groupe"
+                      >
+                        <Edit2 size={16} />
+                      </button>
                     </div>
                     
-                    {/* Planning affiché sous forme de pilules */}
-                    <div className="flex items-start gap-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                      <CalendarDays size={14} style={{ color: 'var(--text-muted)', flexShrink: 0, marginTop: '3px' }} />
-                      <div>
-                        {planningData.length > 0 ? (
-                          <div className="flex flex-wrap gap-2">
-                            {planningData.map((s, i) => (
-                              <span key={i} style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                padding: '3px 10px',
-                                borderRadius: 'var(--radius-full)',
-                                backgroundColor: 'rgba(99, 102, 241, 0.1)',
-                                color: 'var(--accent-primary-hover)',
-                                border: '1px solid rgba(99, 102, 241, 0.2)',
-                                fontSize: '0.75rem',
-                                fontWeight: 600,
-                                fontFamily: 'Outfit'
-                              }}>
-                                <Clock size={11} />
-                                {s.jour} {s.heure}
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <span style={{ color: 'var(--text-muted)' }}>Pas de planning défini</span>
-                        )}
+                    <div className="flex flex-col gap-3 mb-4">
+                      {/* Entraîneur avec Avatar Circulaire et Nom soigné */}
+                      <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                        <div style={{
+                          width: '26px',
+                          height: '26px',
+                          borderRadius: '50%',
+                          backgroundColor: 'rgba(99, 102, 241, 0.15)',
+                          color: 'var(--accent-primary)',
+                          fontWeight: 700,
+                          fontSize: '0.75rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          border: '1px solid rgba(99, 102, 241, 0.3)',
+                          flexShrink: 0
+                        }}>
+                          {trainerInfo.initial}
+                        </div>
+                        <span>Entraîneur: <strong style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{trainerInfo.name}</strong></span>
+                      </div>
+                      
+                      {/* Planning affiché sous forme de pilules */}
+                      <div className="flex items-start gap-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                        <CalendarDays size={14} style={{ color: 'var(--text-muted)', flexShrink: 0, marginTop: '4px' }} />
+                        <div>
+                          {planningData.length > 0 ? (
+                            <div className="flex flex-wrap gap-2">
+                              {planningData.map((s, i) => (
+                                <span key={i} style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  padding: '3px 10px',
+                                  borderRadius: 'var(--radius-full)',
+                                  backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                                  color: 'var(--accent-primary-hover)',
+                                  border: '1px solid rgba(99, 102, 241, 0.2)',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 600,
+                                  fontFamily: 'Outfit'
+                                }}>
+                                  <Clock size={11} />
+                                  {s.jour} {s.heure}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Pas de planning défini</span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
 
-                <div>
-                  <div className="flex justify-between items-center mb-2 text-sm">
-                    <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}><Users size={14} /> Remplissage</span>
-                    <span style={{ fontWeight: 'bold' }}>{inscrits} / {capacite}</span>
+                  {/* Section Remplissage toujours alignée parfaitement en bas */}
+                  <div className="mt-auto pt-4" style={{ borderTop: '1px solid var(--border-color)' }}>
+                    <div className="flex justify-between items-center mb-2 text-sm">
+                      <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}><Users size={14} /> Remplissage</span>
+                      <span style={{ fontWeight: 'bold' }}>{inscrits} / {capacite}</span>
+                    </div>
+                    <div style={{ width: '100%', height: '6px', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
+                      <div 
+                        style={{ 
+                          height: '100%', 
+                          width: `${percentage}%`, 
+                          backgroundColor: progressColor,
+                          borderRadius: '3px',
+                          transition: 'width 0.5s ease-out',
+                          boxShadow: `0 0 8px ${progressColor}40`
+                        }} 
+                      />
+                    </div>
+                    {percentage >= 100 && (
+                      <div className="text-xs mt-2" style={{ color: 'var(--accent-danger)', textAlign: 'right', fontWeight: 600 }}>Groupe complet</div>
+                    )}
                   </div>
-                  <div style={{ width: '100%', height: '6px', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
-                    <div 
-                      style={{ 
-                        height: '100%', 
-                        width: `${percentage}%`, 
-                        backgroundColor: progressColor,
-                        borderRadius: '3px',
-                        transition: 'width 0.5s ease-out',
-                        boxShadow: `0 0 8px ${progressColor}40`
-                      }} 
-                    />
-                  </div>
-                  {percentage >= 100 && (
-                    <div className="text-xs mt-2" style={{ color: 'var(--accent-danger)', textAlign: 'right' }}>Groupe complet</div>
-                  )}
                 </div>
               </Card>
             );
@@ -237,7 +297,7 @@ export default function GroupsManagement() {
         </div>
       )}
 
-      {/* Modal Edition */}
+      {/* Modal Edition / Création */}
       {isModalOpen && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
           <Card style={{ width: '100%', maxWidth: '520px', margin: '1rem' }}>
@@ -273,9 +333,12 @@ export default function GroupsManagement() {
                   onChange={e => setFormData({...formData, entraineur_id: e.target.value})}
                 >
                   <option value="">-- Aucun entraîneur assigné --</option>
-                  {trainers.map(t => (
-                    <option key={t.id} value={t.id}>{t.email}</option>
-                  ))}
+                  {trainers.map(t => {
+                    const info = getTrainerDisplayName(t);
+                    return (
+                      <option key={t.id} value={t.id}>{info.name} ({t.email})</option>
+                    );
+                  })}
                 </select>
               </div>
 
@@ -322,38 +385,38 @@ export default function GroupsManagement() {
                   </div>
                 )}
 
-                {/* Ajouter une séance */}
-                <div className="flex gap-2 items-end">
-                  <div style={{ flex: 1 }}>
-                    <select
-                      className="form-select"
-                      value={newJour}
-                      onChange={e => setNewJour(e.target.value)}
-                      style={{ fontSize: '0.85rem' }}
-                    >
-                      {JOURS.map(jour => (
-                        <option key={jour} value={jour}>{jour}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <input
-                      type="time"
-                      className="form-input"
-                      value={newHeure}
-                      onChange={e => setNewHeure(e.target.value)}
-                      style={{ fontSize: '0.85rem' }}
-                    />
-                  </div>
-                  <Button type="button" variant="secondary" onClick={addSeance} style={{ flexShrink: 0, padding: '0.6rem 0.875rem' }}>
-                    <Plus size={16} />
+                {/* Ajout d'une séance */}
+                <div className="flex gap-2 items-center">
+                  <select 
+                    className="form-select" 
+                    style={{ flex: 1 }}
+                    value={selectedJour}
+                    onChange={e => setSelectedJour(e.target.value)}
+                  >
+                    {JOURS_SEMAINE.map(j => (
+                      <option key={j} value={j}>{j}</option>
+                    ))}
+                  </select>
+                  <input 
+                    type="time" 
+                    className="form-input" 
+                    style={{ width: '120px' }}
+                    value={selectedHeure}
+                    onChange={e => setSelectedHeure(e.target.value)}
+                  />
+                  <Button type="button" variant="secondary" onClick={addSeance}>
+                    + Ajouter
                   </Button>
                 </div>
               </div>
 
-              <div className="flex gap-4 justify-end mt-2">
-                <Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)}>Annuler</Button>
-                <Button type="submit" variant="primary">Enregistrer</Button>
+              <div className="flex gap-3 justify-end mt-4">
+                <Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)}>
+                  Annuler
+                </Button>
+                <Button type="submit" variant="primary">
+                  Enregistrer
+                </Button>
               </div>
             </form>
           </Card>
