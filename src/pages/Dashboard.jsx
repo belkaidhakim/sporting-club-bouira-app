@@ -112,6 +112,45 @@ export default function Dashboard() {
           toast.error("Erreur Dashboard Présences: " + presencesError.message);
         }
 
+        // Calcul des cotisations expirant sous 7 jours
+        const now = new Date();
+        const in7Days = new Date();
+        in7Days.setDate(in7Days.getDate() + 7);
+
+        const expiringSoon = [];
+        data?.forEach(athlete => {
+          if (athlete.cotisations && athlete.cotisations.length > 0) {
+            const sorted = [...athlete.cotisations].sort((a, b) => new Date(b.periode_couverte_fin) - new Date(a.periode_couverte_fin));
+            const endDate = new Date(sorted[0].periode_couverte_fin);
+            if (endDate >= now && endDate <= in7Days) {
+              const daysLeft = Math.max(0, Math.ceil((endDate - now) / (1000 * 60 * 60 * 24)));
+              expiringSoon.push({
+                ...athlete,
+                endDateStr: endDate.toLocaleDateString('fr-FR'),
+                daysLeft
+              });
+            }
+          }
+        });
+
+        // Récupérer les statistiques de remplissage par groupe
+        const { data: groupesData } = await supabase
+          .from('groupes')
+          .select('id, nom, capacite_max, athletes(id)');
+
+        let totalCapacity = 0;
+        let totalEnrolled = 0;
+        const groupCapacityStats = (groupesData || []).map(g => {
+          const count = g.athletes ? g.athletes.length : 0;
+          const max = g.capacite_max || 20;
+          totalCapacity += max;
+          totalEnrolled += count;
+          const fillRate = Math.min(100, Math.round((count / max) * 100));
+          return { id: g.id, nom: g.nom, count, max, fillRate };
+        });
+
+        const globalFillRate = totalCapacity > 0 ? Math.min(100, Math.round((totalEnrolled / totalCapacity) * 100)) : 0;
+
         setStats({
           total: data?.length || 0,
           active,
@@ -119,6 +158,11 @@ export default function Dashboard() {
           todayPresences: uniqueTodayAthletes,
           expectedToday: expectedTodayList.length,
           absentTodayList,
+          expiringSoon,
+          groupCapacityStats,
+          totalCapacity,
+          totalEnrolled,
+          globalFillRate,
           recent: data?.slice(0, 5) || [],
           recentPresences: presencesData || []
         });
@@ -199,7 +243,7 @@ export default function Dashboard() {
           initial="hidden" 
           animate="visible"
         >
-          <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
             <StatCard
               icon={<Users size={20} />}
               iconBg="rgba(99, 102, 241, 0.1)"
@@ -236,6 +280,90 @@ export default function Dashboard() {
               subtitle={`Sur ${stats.total} athlètes inscrits`}
             />
           </motion.div>
+
+          {/* BLOC ALERTES DE RENOUVELLEMENT (COTISATIONS EXPIRANT DANS LES 7 PROCHAINS JOURS) */}
+          {stats.expiringSoon && stats.expiringSoon.length > 0 && (
+            <motion.div variants={itemVariants} className="mb-6">
+              <Card className="p-4" style={{ backgroundColor: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.25)' }}>
+                <div className="flex justify-between items-center mb-3">
+                  <div className="flex items-center gap-2" style={{ color: '#f59e0b', fontWeight: 700 }}>
+                    <Clock size={20} />
+                    <span>Alertes Renouvellement ({stats.expiringSoon.length} cotisation{stats.expiringSoon.length > 1 ? 's' : ''} expirant sous 7 jours)</span>
+                  </div>
+                  <Link to="/finances" style={{ textDecoration: 'none' }}>
+                    <Button variant="secondary" style={{ padding: '0.3rem 0.75rem', fontSize: '0.8rem' }}>Gérer les cotisations</Button>
+                  </Link>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {stats.expiringSoon.map(athlete => (
+                    <div key={athlete.id} className="p-3 rounded-lg flex justify-between items-center" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--text-primary)' }}>{athlete.nom} {athlete.prenom}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Expire le : <strong>{athlete.endDateStr}</strong></div>
+                      </div>
+                      <span style={{ padding: '2px 8px', borderRadius: '12px', backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', fontSize: '0.75rem', fontWeight: 700 }}>
+                        {athlete.daysLeft === 0 ? "Aujourd'hui" : `Dans ${athlete.daysLeft}j`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </motion.div>
+          )}
+
+          {/* WIDGET TAUX DE REMPLISSAGE VISUEL PAR GROUPE */}
+          {stats.groupCapacityStats && stats.groupCapacityStats.length > 0 && (
+            <motion.div variants={itemVariants} className="mb-6">
+              <Card className="p-5">
+                <div className="flex justify-between items-center mb-3">
+                  <div>
+                    <h3 className="text-base font-semibold mb-0" style={{ color: 'var(--text-primary)' }}>Taux de Remplissage des Groupes</h3>
+                    <span className="text-xs text-muted">Capacité globale des effectifs d'entraînement</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span style={{ fontSize: '1.25rem', fontWeight: 800, color: stats.globalFillRate >= 90 ? '#ef4444' : stats.globalFillRate >= 70 ? '#f59e0b' : '#10b981' }}>
+                      {stats.globalFillRate}%
+                    </span>
+                    <span className="text-xs text-muted">({stats.totalEnrolled}/{stats.totalCapacity} places)</span>
+                  </div>
+                </div>
+
+                {/* Jauge Globale */}
+                <div style={{ width: '100%', height: '8px', backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: '4px', overflow: 'hidden', marginBottom: '1.25rem' }}>
+                  <div style={{ 
+                    height: '100%', 
+                    width: `${stats.globalFillRate}%`, 
+                    backgroundColor: stats.globalFillRate >= 90 ? '#ef4444' : stats.globalFillRate >= 70 ? '#f59e0b' : '#10b981',
+                    borderRadius: '4px',
+                    transition: 'width 0.6s ease'
+                  }} />
+                </div>
+
+                {/* Micro-jauges par groupe */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {stats.groupCapacityStats.map(g => (
+                    <div key={g.id} className="p-3 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)' }}>
+                      <div className="flex justify-between items-center text-xs mb-1.5">
+                        <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{g.nom}</span>
+                        <span style={{ fontWeight: 700, color: g.fillRate >= 90 ? '#ef4444' : g.fillRate >= 70 ? '#f59e0b' : '#10b981' }}>
+                          {g.count}/{g.max} ({g.fillRate}%)
+                        </span>
+                      </div>
+                      <div style={{ width: '100%', height: '5px', backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden' }}>
+                        <div style={{ 
+                          height: '100%', 
+                          width: `${g.fillRate}%`, 
+                          backgroundColor: g.fillRate >= 90 ? '#ef4444' : g.fillRate >= 70 ? '#f59e0b' : '#10b981',
+                          borderRadius: '3px'
+                        }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </motion.div>
+          )}
 
           <motion.div variants={itemVariants} className="mt-8 grid gap-6" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))' }}>
             <Card>
