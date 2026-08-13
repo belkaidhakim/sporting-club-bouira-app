@@ -9,6 +9,66 @@ import { useAthletes } from '../hooks/useAthletes';
 import { useGroupes } from '../hooks/useGroupes';
 import { Card, Button, Badge, Skeleton } from '../components/ui';
 
+const getInitials = (nom = '', prenom = '') => {
+  const n = (nom || '').trim().charAt(0).toUpperCase();
+  const p = (prenom || '').trim().charAt(0).toUpperCase();
+  return `${n}${p}` || '?';
+};
+
+const getAgeAndCategory = (dateNaissance) => {
+  if (!dateNaissance) return { age: null, category: 'N/A', dateStr: '-' };
+  const birth = new Date(dateNaissance);
+  if (isNaN(birth.getTime())) return { age: null, category: 'N/A', dateStr: '-' };
+  
+  const now = new Date();
+  let age = now.getFullYear() - birth.getFullYear();
+  const m = now.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < birth.getDate())) age--;
+
+  let category = 'Senior';
+  if (age < 7) category = 'Baby (U7)';
+  else if (age <= 9) category = 'Poussin (U9)';
+  else if (age <= 11) category = 'Pupille (U11)';
+  else if (age <= 13) category = 'Benjamin (U13)';
+  else if (age <= 15) category = 'Minime (U15)';
+  else if (age <= 17) category = 'Cadet (U17)';
+  else if (age <= 19) category = 'Junior (U20)';
+  else if (age >= 35) category = 'Master (+35)';
+
+  return { age, category, dateStr: birth.toLocaleDateString('fr-FR') };
+};
+
+const getCotisationStatus = (cotisationsArr, cardStatut) => {
+  if (!cotisationsArr || cotisationsArr.length === 0) {
+    return { label: 'Cotis. En attente', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.12)' };
+  }
+  const sorted = [...cotisationsArr].sort((a, b) => new Date(b.periode_couverte_fin) - new Date(a.periode_couverte_fin));
+  const latest = sorted[0];
+  const endDate = new Date(latest.periode_couverte_fin);
+  const now = new Date();
+
+  const monthNames = ['Janv', 'Fév', 'Mars', 'Avril', 'Mai', 'Juin', 'Juil', 'Août', 'Sept', 'Oct', 'Nov', 'Déc'];
+  const monthName = monthNames[endDate.getMonth()];
+
+  if (endDate < now || cardStatut === 'EXPIREE' || cardStatut === 'SUSPENDUE') {
+    return { label: `Expiré (${monthName})`, color: '#ef4444', bg: 'rgba(239, 68, 68, 0.12)' };
+  } else {
+    return { label: `Payé (${monthName})`, color: '#10b981', bg: 'rgba(16, 185, 129, 0.12)' };
+  }
+};
+
+const getPresenceGauge = (presencesArr) => {
+  const count = Array.isArray(presencesArr) ? presencesArr.length : 0;
+  const target = 8;
+  const percent = Math.min(100, Math.round((count / target) * 100));
+  
+  let color = '#10b981';
+  if (percent < 50) color = '#ef4444';
+  else if (percent < 75) color = '#f59e0b';
+
+  return { count, target, percent, color };
+};
+
 export default function AthletesList() {
   const [searchParams] = useSearchParams();
   const { athletes, loading, fetchAthletes, archiveAthlete, toggleAccessStatus } = useAthletes();
@@ -227,9 +287,9 @@ export default function AthletesList() {
           </div>
         ) : (
           <>
-          {/* Version Desktop (Tableau) */}
+          {/* Version Desktop (Tableau Enrichi) */}
           <div className="responsive-table-desktop table-responsive">
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '800px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '950px' }}>
               <thead>
                 <tr style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-muted)' }}>
                   <th style={{ padding: '1rem', width: '40px' }}>
@@ -246,22 +306,177 @@ export default function AthletesList() {
                       style={{ cursor: 'pointer', width: '16px', height: '16px' }}
                     />
                   </th>
-                  <th style={{ padding: '1rem', fontWeight: '500' }}>Nom Prénom</th>
-                  <th style={{ padding: '1rem', fontWeight: '500' }}>Sexe</th>
+                  <th style={{ padding: '1rem', fontWeight: '500' }}>Membre</th>
+                  <th style={{ padding: '1rem', fontWeight: '500' }}>Catégorie / Naissance</th>
                   <th style={{ padding: '1rem', fontWeight: '500' }}>Groupe</th>
-                  <th style={{ padding: '1rem', fontWeight: '500' }}>Téléphone</th>
-                  <th style={{ padding: '1rem', fontWeight: '500' }}>Statut</th>
+                  <th style={{ padding: '1rem', fontWeight: '500' }}>Cotisation</th>
+                  <th style={{ padding: '1rem', fontWeight: '500' }}>Assiduité (Présence)</th>
+                  <th style={{ padding: '1rem', fontWeight: '500' }}>Accès</th>
                   <th style={{ padding: '1rem', fontWeight: '500', textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredAthletes.length === 0 ? (
                   <tr>
-                    <td colSpan="6" className="p-8 text-center text-muted">Aucun athlète trouvé.</td>
+                    <td colSpan="8" className="p-8 text-center text-muted">Aucun athlète trouvé.</td>
                   </tr>
-                ) : filteredAthletes.map(athlete => (
-                  <tr key={athlete.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <td style={{ padding: '1rem' }}>
+                ) : filteredAthletes.map(athlete => {
+                  const cardStatut = athlete.cartes_acces?.statut || (Array.isArray(athlete.cartes_acces) && athlete.cartes_acces[0]?.statut);
+                  const { age, category, dateStr } = getAgeAndCategory(athlete.date_naissance);
+                  const cotisInfo = getCotisationStatus(athlete.cotisations, cardStatut);
+                  const presence = getPresenceGauge(athlete.presences);
+
+                  return (
+                    <tr key={athlete.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <td style={{ padding: '1rem' }}>
+                        <input 
+                          type="checkbox" 
+                          checked={selectedAthletes.includes(athlete.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedAthletes(prev => [...prev, athlete.id]);
+                            } else {
+                              setSelectedAthletes(prev => prev.filter(id => id !== athlete.id));
+                            }
+                          }}
+                          style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                        />
+                      </td>
+                      <td style={{ padding: '1rem' }}>
+                        <div className="flex items-center gap-3">
+                          {athlete.photo_url ? (
+                            <img 
+                              src={athlete.photo_url} 
+                              alt={`${athlete.nom} ${athlete.prenom}`} 
+                              style={{ width: '38px', height: '38px', borderRadius: '50%', objectFit: 'cover', border: '1.5px solid var(--accent-primary-hover)' }} 
+                            />
+                          ) : (
+                            <div 
+                              style={{ 
+                                width: '38px', 
+                                height: '38px', 
+                                borderRadius: '50%', 
+                                backgroundColor: 'rgba(99, 102, 241, 0.15)', 
+                                border: '1.5px solid rgba(99, 102, 241, 0.3)', 
+                                color: 'var(--accent-primary-hover)',
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'center', 
+                                fontWeight: 700, 
+                                fontSize: '0.85rem' 
+                              }}
+                            >
+                              {getInitials(athlete.nom, athlete.prenom)}
+                            </div>
+                          )}
+                          <div>
+                            <div className="font-semibold" style={{ color: 'var(--text-primary)' }}>{athlete.nom} {athlete.prenom}</div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{athlete.sexe || '-'} • {athlete.telephone || 'Sans tél'}</div>
+                          </div>
+                        </div>
+                      </td>
+
+                      <td style={{ padding: '1rem' }}>
+                        <div>
+                          <span style={{ padding: '2px 8px', borderRadius: '12px', backgroundColor: 'rgba(255,255,255,0.08)', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                            {category}
+                          </span>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '3px' }}>
+                            {age !== null ? `${age} ans` : '-'} ({dateStr})
+                          </div>
+                        </div>
+                      </td>
+
+                      <td style={{ padding: '1rem' }}>
+                        <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                          {athlete.groupes?.nom || athlete.groupe || '-'}
+                        </span>
+                      </td>
+
+                      <td style={{ padding: '1rem' }}>
+                        <span style={{ padding: '3px 10px', borderRadius: '12px', backgroundColor: cotisInfo.bg, color: cotisInfo.color, fontSize: '0.75rem', fontWeight: 600, display: 'inline-block' }}>
+                          {cotisInfo.label}
+                        </span>
+                      </td>
+
+                      <td style={{ padding: '1rem' }}>
+                        <div style={{ minWidth: '110px' }}>
+                          <div className="flex justify-between text-xs mb-1" style={{ fontSize: '0.75rem' }}>
+                            <span style={{ fontWeight: 600 }}>{presence.count}/{presence.target} séances</span>
+                            <span style={{ color: presence.color, fontWeight: 700 }}>{presence.percent}%</span>
+                          </div>
+                          <div style={{ width: '100%', height: '5px', backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${presence.percent}%`, backgroundColor: presence.color, borderRadius: '3px' }} />
+                          </div>
+                        </div>
+                      </td>
+
+                      <td style={{ padding: '1rem' }}>
+                        <button 
+                          onClick={() => toggleAccessStatus(athlete.id, athlete.cartes_acces)}
+                          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', transition: 'opacity 0.2s' }}
+                          title="Cliquez pour changer le statut"
+                        >
+                          <Badge status={cardStatut}>
+                            {cardStatut === 'ACTIVE' ? 'Active' : 'Suspendue'}
+                          </Badge>
+                        </button>
+                      </td>
+
+                      <td style={{ padding: '1rem', textAlign: 'right' }}>
+                        <div className="flex justify-end gap-2">
+                          <Link to={`/athletes/edit/${athlete.id}`}>
+                            <Button variant="secondary" style={{ padding: '0.4rem 0.75rem' }}>
+                              <Edit size={16} /> Modifier
+                            </Button>
+                          </Link>
+                          <Button 
+                            variant="secondary" 
+                            style={{ padding: '0.4rem 0.75rem' }}
+                            onClick={() => setSelectedAthlete(athlete)}
+                          >
+                            <QrCode size={16} /> Badge
+                          </Button>
+                          <Button 
+                            variant="secondary" 
+                            style={{ padding: '0.4rem 0.75rem', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)' }}
+                            onClick={() => handleDelete(athlete.id)}
+                          >
+                            <Trash2 size={16} />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Version Mobile (Cartes Ergonomiques Enrichies) */}
+          <div className="responsive-cards-mobile">
+            {filteredAthletes.length === 0 ? (
+              <div className="p-8 text-center text-muted">Aucun athlète trouvé.</div>
+            ) : filteredAthletes.map(athlete => {
+              const cardStatut = athlete.cartes_acces?.statut || (Array.isArray(athlete.cartes_acces) && athlete.cartes_acces[0]?.statut);
+              const { age, category, dateStr } = getAgeAndCategory(athlete.date_naissance);
+              const cotisInfo = getCotisationStatus(athlete.cotisations, cardStatut);
+              const presence = getPresenceGauge(athlete.presences);
+
+              return (
+                <div 
+                  key={athlete.id}
+                  className="p-4 rounded-lg flex flex-col gap-3"
+                  style={{
+                    backgroundColor: 'var(--bg-secondary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 'var(--radius-md)',
+                    boxShadow: 'var(--shadow-sm)'
+                  }}
+                >
+                  {/* Haut: Avatar + Nom Prénom + Statut Accès */}
+                  <div className="flex items-center justify-between w-full pb-2" style={{ borderBottom: '1px solid var(--border-color)' }}>
+                    <div className="flex items-center gap-3">
                       <input 
                         type="checkbox" 
                         checked={selectedAthletes.includes(athlete.id)}
@@ -272,130 +487,105 @@ export default function AthletesList() {
                             setSelectedAthletes(prev => prev.filter(id => id !== athlete.id));
                           }
                         }}
-                        style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                        style={{ cursor: 'pointer', width: '18px', height: '18px' }}
                       />
-                    </td>
-                    <td style={{ padding: '1rem' }}>
-                      <div className="font-medium">{athlete.nom} {athlete.prenom}</div>
-                    </td>
-                    <td style={{ padding: '1rem' }}>{athlete.sexe || '-'}</td>
-                    <td style={{ padding: '1rem 0' }}>{athlete.groupes?.nom || athlete.groupe || '-'}</td>
-                    <td style={{ padding: '1rem' }}>{athlete.telephone || '-'}</td>
-                    <td style={{ padding: '1rem' }}>
-                      <button 
-                        onClick={() => toggleAccessStatus(athlete.id, athlete.cartes_acces)}
-                        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', transition: 'opacity 0.2s' }}
-                        title="Cliquez pour changer le statut"
-                      >
-                        <Badge status={athlete.cartes_acces?.statut || (Array.isArray(athlete.cartes_acces) && athlete.cartes_acces[0]?.statut)}>
-                          {(athlete.cartes_acces?.statut === 'ACTIVE' || (Array.isArray(athlete.cartes_acces) && athlete.cartes_acces[0]?.statut === 'ACTIVE'))
-                            ? 'Active' : 'Suspendue'}
-                        </Badge>
-                      </button>
-                    </td>
-                    <td style={{ padding: '1rem', textAlign: 'right' }}>
-                      <div className="flex justify-end gap-2">
-                        <Link to={`/athletes/edit/${athlete.id}`}>
-                          <Button variant="secondary" style={{ padding: '0.4rem 0.75rem' }}>
-                            <Edit size={16} /> Modifier
-                          </Button>
-                        </Link>
-                        <Button 
-                          variant="secondary" 
-                          style={{ padding: '0.4rem 0.75rem' }}
-                          onClick={() => setSelectedAthlete(athlete)}
+                      {athlete.photo_url ? (
+                        <img 
+                          src={athlete.photo_url} 
+                          alt="" 
+                          style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover', border: '1px solid var(--accent-primary-hover)' }} 
+                        />
+                      ) : (
+                        <div 
+                          style={{ 
+                            width: '36px', 
+                            height: '36px', 
+                            borderRadius: '50%', 
+                            backgroundColor: 'rgba(99, 102, 241, 0.15)', 
+                            border: '1px solid rgba(99, 102, 241, 0.3)', 
+                            color: 'var(--accent-primary-hover)',
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center', 
+                            fontWeight: 700, 
+                            fontSize: '0.8rem' 
+                          }}
                         >
-                          <QrCode size={16} /> Badge
-                        </Button>
-                        <Button 
-                          variant="secondary" 
-                          style={{ padding: '0.4rem 0.75rem', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)' }}
-                          onClick={() => handleDelete(athlete.id)}
-                        >
-                          <Trash2 size={16} />
-                        </Button>
+                          {getInitials(athlete.nom, athlete.prenom)}
+                        </div>
+                      )}
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+                          {athlete.nom} {athlete.prenom}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          Groupe: {athlete.groupes?.nom || athlete.groupe || '-'}
+                        </div>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                    </div>
 
-          {/* Version Mobile (Cartes Ergonomiques) */}
-          <div className="responsive-cards-mobile">
-            {filteredAthletes.length === 0 ? (
-              <div className="p-8 text-center text-muted">Aucun athlète trouvé.</div>
-            ) : filteredAthletes.map(athlete => (
-              <div 
-                key={athlete.id}
-                className="p-4 rounded-lg flex flex-col items-center text-center"
-                style={{
-                  backgroundColor: 'var(--bg-secondary)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: 'var(--radius-md)',
-                  boxShadow: 'var(--shadow-sm)'
-                }}
-              >
-                {/* Haut: Checkbox + Nom Prénom + Statut */}
-                <div className="flex items-center justify-between w-full mb-3 pb-2" style={{ borderBottom: '1px solid var(--border-color)' }}>
-                  <input 
-                    type="checkbox" 
-                    checked={selectedAthletes.includes(athlete.id)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedAthletes(prev => [...prev, athlete.id]);
-                      } else {
-                        setSelectedAthletes(prev => prev.filter(id => id !== athlete.id));
-                      }
-                    }}
-                    style={{ cursor: 'pointer', width: '18px', height: '18px' }}
-                  />
-                  <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)' }}>
-                    {athlete.nom} {athlete.prenom}
+                    <button 
+                      onClick={() => toggleAccessStatus(athlete.id, athlete.cartes_acces)}
+                      style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                    >
+                      <Badge status={cardStatut}>
+                        {cardStatut === 'ACTIVE' ? 'Active' : 'Suspendue'}
+                      </Badge>
+                    </button>
                   </div>
-                  <button 
-                    onClick={() => toggleAccessStatus(athlete.id, athlete.cartes_acces)}
-                    style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
-                  >
-                    <Badge status={athlete.cartes_acces?.statut || (Array.isArray(athlete.cartes_acces) && athlete.cartes_acces[0]?.statut)}>
-                      {(athlete.cartes_acces?.statut === 'ACTIVE' || (Array.isArray(athlete.cartes_acces) && athlete.cartes_acces[0]?.statut === 'ACTIVE'))
-                        ? 'Active' : 'Suspendue'}
-                    </Badge>
-                  </button>
-                </div>
 
-                {/* Milieu: Détails (Groupe, Sexe & Téléphone) */}
-                <div className="flex flex-wrap justify-center gap-3 mb-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                  <div>Groupe: <strong style={{ color: 'var(--text-primary)' }}>{athlete.groupes?.nom || athlete.groupe || '-'}</strong></div>
-                  <div>Sexe: <strong style={{ color: 'var(--text-primary)' }}>{athlete.sexe || '-'}</strong></div>
-                  <div>Tél: <strong style={{ color: 'var(--text-primary)' }}>{athlete.telephone || '-'}</strong></div>
-                </div>
+                  {/* Ligne Badges: Catégorie & Cotisation */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span style={{ padding: '2px 8px', borderRadius: '12px', backgroundColor: 'rgba(255,255,255,0.08)', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                      {category} {age !== null ? `(${age} ans)` : ''}
+                    </span>
+                    <span style={{ padding: '2px 8px', borderRadius: '12px', backgroundColor: cotisInfo.bg, color: cotisInfo.color, fontSize: '0.75rem', fontWeight: 600 }}>
+                      {cotisInfo.label}
+                    </span>
+                  </div>
 
-                {/* Bas: Boutons d'action bien centrés en dessous */}
-                <div className="flex flex-wrap justify-center gap-2 w-full pt-2" style={{ borderTop: '1px solid var(--border-color)' }}>
-                  <Link to={`/athletes/edit/${athlete.id}`}>
-                    <Button variant="secondary" style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}>
-                      <Edit size={14} /> Modifier
+                  {/* Jauge d'Assiduité / Présence */}
+                  <div style={{ backgroundColor: 'rgba(255,255,255,0.03)', padding: '8px 12px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span style={{ color: 'var(--text-muted)' }}>Assiduité : <strong>{presence.count}/{presence.target} séances</strong></span>
+                      <span style={{ color: presence.color, fontWeight: 700 }}>{presence.percent}%</span>
+                    </div>
+                    <div style={{ width: '100%', height: '5px', backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${presence.percent}%`, backgroundColor: presence.color, borderRadius: '3px' }} />
+                    </div>
+                  </div>
+
+                  {/* Détails complémentaires */}
+                  <div className="flex justify-between text-xs text-muted">
+                    <span>Né(e) le : <strong>{dateStr}</strong></span>
+                    <span>Tél : <strong>{athlete.telephone || '-'}</strong></span>
+                  </div>
+
+                  {/* Bas: Boutons d'action centrés */}
+                  <div className="flex justify-center gap-2 w-full pt-2" style={{ borderTop: '1px solid var(--border-color)' }}>
+                    <Link to={`/athletes/edit/${athlete.id}`}>
+                      <Button variant="secondary" style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}>
+                        <Edit size={14} /> Modifier
+                      </Button>
+                    </Link>
+                    <Button 
+                      variant="secondary" 
+                      style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}
+                      onClick={() => setSelectedAthlete(athlete)}
+                    >
+                      <QrCode size={14} /> Badge
                     </Button>
-                  </Link>
-                  <Button 
-                    variant="secondary" 
-                    style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}
-                    onClick={() => setSelectedAthlete(athlete)}
-                  >
-                    <QrCode size={14} /> Badge
-                  </Button>
-                  <Button 
-                    variant="secondary" 
-                    style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)' }}
-                    onClick={() => handleDelete(athlete.id)}
-                  >
-                    <Trash2 size={14} />
-                  </Button>
+                    <Button 
+                      variant="secondary" 
+                      style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)' }}
+                      onClick={() => handleDelete(athlete.id)}
+                    >
+                      <Trash2 size={14} />
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
           </>
         )}

@@ -16,7 +16,8 @@ export function useAthletes() {
           *,
           cartes_acces (statut, date_dernier_paiement),
           cotisations (periode_couverte_fin),
-          groupes(nom)
+          groupes(nom),
+          presences (id)
         `)
         .eq('est_actif', true)
         .order('date_inscription', { ascending: false });
