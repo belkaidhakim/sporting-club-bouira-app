@@ -76,6 +76,8 @@ export default function AthletesList() {
   const [selectedAthlete, setSelectedAthlete] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [groupFilter, setGroupFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [genderFilter, setGenderFilter] = useState('all');
   const [selectedAthletes, setSelectedAthletes] = useState([]);
   const [showBulkPrint, setShowBulkPrint] = useState(false);
   const fileInputRef = useRef(null);
@@ -214,7 +216,15 @@ export default function AthletesList() {
                          groupeNom.includes(gFilter) ||
                          String(athlete.groupe_id) === String(groupFilter);
 
-    return matchesSearch && matchesGroup;
+    // Filtre par statut d'accès (ACTIVE / SUSPENDUE)
+    const cardStatut = athlete.cartes_acces?.statut || (Array.isArray(athlete.cartes_acces) && athlete.cartes_acces[0]?.statut) || 'ACTIVE';
+    const matchesStatus = statusFilter === 'all' || cardStatut === statusFilter;
+
+    // Filtre par sexe (M / F)
+    const sexe = (athlete.sexe || '').trim().toUpperCase();
+    const matchesGender = genderFilter === 'all' || sexe === genderFilter;
+
+    return matchesSearch && matchesGroup && matchesStatus && matchesGender;
   });
 
   return (
@@ -254,9 +264,9 @@ export default function AthletesList() {
       </div>
 
       <Card noPadding>
-        <div className="p-4" style={{ borderBottom: '1px solid var(--border-color)', display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          <div className="relative" style={{ width: '300px' }}>
-            <Search size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+        <div className="p-4 flex flex-wrap gap-3 items-center" style={{ borderBottom: '1px solid var(--border-color)' }}>
+          <div className="relative" style={{ minWidth: '220px', flex: '1 1 200px' }}>
+            <Search size={18} style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
             <input 
               type="text" 
               placeholder="Rechercher par nom..." 
@@ -266,16 +276,39 @@ export default function AthletesList() {
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
+
           <select 
             className="form-select" 
-            style={{ width: '200px' }}
+            style={{ width: '170px' }}
             value={groupFilter}
             onChange={(e) => setGroupFilter(e.target.value)}
           >
-            <option value="all">Tous les groupes</option>
+            <option value="all">👥 Tous les groupes</option>
             {groupes.map(g => (
               <option key={g.id} value={g.nom}>{g.nom}</option>
             ))}
+          </select>
+
+          <select 
+            className="form-select" 
+            style={{ width: '160px' }}
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="all">⚡ Tous statuts</option>
+            <option value="ACTIVE">🟢 Actifs</option>
+            <option value="SUSPENDUE">🔴 Suspendus / Inactifs</option>
+          </select>
+
+          <select 
+            className="form-select" 
+            style={{ width: '140px' }}
+            value={genderFilter}
+            onChange={(e) => setGenderFilter(e.target.value)}
+          >
+            <option value="all">🚻 Tous sexes</option>
+            <option value="M">👨 Masculin (M)</option>
+            <option value="F">👩 Féminin (F)</option>
           </select>
         </div>
         
