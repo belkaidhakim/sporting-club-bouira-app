@@ -513,9 +513,21 @@ export default function FinancialDashboard() {
                 tickFormatter={(val) => val >= 1000 ? `${(val / 1000).toLocaleString('fr-FR')}k DZ` : `${val} DZ`}
               />
               <Tooltip 
-                cursor={{ fill: 'rgba(255,255,255,0.05)' }}
-                contentStyle={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '8px' }}
-                formatter={(value) => [`${Number(value).toLocaleString('fr-FR')} DZ`, '']}
+                cursor={{ fill: 'rgba(255,255,255,0.06)' }}
+                contentStyle={{ 
+                  backgroundColor: 'rgba(15, 23, 42, 0.95)', 
+                  backdropFilter: 'blur(8px)',
+                  border: '1px solid var(--border-color)', 
+                  borderRadius: '10px',
+                  padding: '10px 14px',
+                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)'
+                }}
+                labelStyle={{ color: 'var(--text-muted)', fontWeight: 600, marginBottom: '6px', fontSize: '0.85rem' }}
+                itemStyle={{ fontSize: '0.85rem', fontWeight: 600, padding: '2px 0' }}
+                formatter={(value, name) => [
+                  `${name === 'Dépenses' ? '-' : '+'}${Number(value).toLocaleString('fr-FR')} DZ`,
+                  name
+                ]}
               />
               <Legend />
               <Bar dataKey="Revenus" fill="var(--accent-success)" radius={[4, 4, 0, 0]} />
