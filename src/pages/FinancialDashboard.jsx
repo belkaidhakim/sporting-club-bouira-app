@@ -751,11 +751,27 @@ export default function FinancialDashboard() {
                 <option value="2027">2027</option>
               </select>
             </div>
-
-            <Button variant="secondary" onClick={exportToCSV}>
-              <Download size={16} /> Export CSV
-            </Button>
           </div>
+
+          <Button 
+            variant="secondary" 
+            onClick={exportToCSV}
+            style={{ 
+              display: 'inline-flex', 
+              alignItems: 'center', 
+              gap: '6px',
+              backgroundColor: 'rgba(99, 102, 241, 0.12)',
+              border: '1px solid rgba(99, 102, 241, 0.25)',
+              color: 'var(--accent-primary-hover)',
+              fontWeight: 600,
+              padding: '0.5rem 1rem',
+              borderRadius: 'var(--radius-md)',
+              transition: 'all 0.2s ease'
+            }}
+            title="Télécharger l'historique au format CSV"
+          >
+            <Download size={16} /> Exporter CSV
+          </Button>
         </div>
         
         {/* REVENUS TABLE */}
