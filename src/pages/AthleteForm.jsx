@@ -4,6 +4,7 @@ import { supabase } from '../supabaseClient';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
 import { z } from 'zod';
+import { ShieldAlert, PhoneCall, HeartPulse, FileText } from 'lucide-react';
 import { Card, Button } from '../components/ui';
 import { useGroupes } from '../hooks/useGroupes';
 
@@ -12,6 +13,8 @@ const athleteSchema = z.object({
   prenom: z.string().min(2, 'Le prénom doit faire au moins 2 caractères'),
   date_naissance: z.string().nullable().optional(),
   telephone: z.string().regex(/^(0)[5-7][0-9]{8}$/, 'Numéro de téléphone invalide (ex: 0550123456)').or(z.literal('')).nullable().optional(),
+  contact_urgence: z.string().regex(/^(0)[5-7][0-9]{8}$/, 'Numéro d\'urgence invalide (ex: 0550123456)').or(z.literal('')).nullable().optional(),
+  observations_medicales: z.string().nullable().optional(),
   groupe_id: z.string().nullable().optional(),
   sexe: z.enum(['Homme', 'Femme']).or(z.literal('')).nullable().optional(),
 });
@@ -26,6 +29,8 @@ export default function AthleteForm() {
     prenom: '',
     date_naissance: '',
     telephone: '',
+    contact_urgence: '',
+    observations_medicales: '',
     groupe_id: '',
     sexe: '',
     certificat_medical_valide: false,
@@ -52,6 +57,8 @@ export default function AthleteForm() {
             prenom: data.prenom || '',
             date_naissance: data.date_naissance ? data.date_naissance.split('T')[0] : '',
             telephone: data.telephone || '',
+            contact_urgence: data.contact_urgence || data.telephone_urgence || '',
+            observations_medicales: data.observations_medicales || data.remarques_medicales || '',
             groupe_id: data.groupe_id || '',
             sexe: data.sexe || '',
             certificat_medical_valide: data.certificat_medical_valide || false,
@@ -122,48 +129,59 @@ export default function AthleteForm() {
     setLoading(true);
 
     try {
+      const payload = {
+        nom: formData.nom,
+        prenom: formData.prenom,
+        date_naissance: formData.date_naissance || null,
+        telephone: formData.telephone || null,
+        contact_urgence: formData.contact_urgence || null,
+        observations_medicales: formData.observations_medicales || null,
+        groupe_id: formData.groupe_id || null,
+        sexe: formData.sexe || null,
+        certificat_medical_valide: formData.certificat_medical_valide,
+        photo: formData.photo || null
+      };
+
       if (id) {
         // Update existing athlete
-        const { error } = await supabase
+        let { error } = await supabase
           .from('athletes')
-          .update({
-            nom: formData.nom,
-            prenom: formData.prenom,
-            date_naissance: formData.date_naissance || null,
-            telephone: formData.telephone,
-            groupe_id: formData.groupe_id || null,
-            sexe: formData.sexe,
-            certificat_medical_valide: formData.certificat_medical_valide,
-            photo: formData.photo
-          })
+          .update(payload)
           .eq('id', id);
 
-        if (error) throw error;
+        if (error && error.message.includes('column')) {
+          delete payload.contact_urgence;
+          delete payload.observations_medicales;
+          const retry = await supabase.from('athletes').update(payload).eq('id', id);
+          if (retry.error) throw retry.error;
+        } else if (error) {
+          throw error;
+        }
         toast.success('Athlète mis à jour avec succès !');
       } else {
         // Generate a unique token for QR code
         const token_qr = `CLUB-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        payload.token_qr = token_qr;
 
-        const { error } = await supabase
+        let { error } = await supabase
           .from('athletes')
-          .insert([
-            { 
-              ...formData,
-              groupe_id: formData.groupe_id || null,
-              token_qr,
-              // Assuming date_naissance might be empty string, make it null if so
-              date_naissance: formData.date_naissance || null 
-            }
-          ]);
+          .insert([payload]);
 
-        if (error) throw error;
+        if (error && error.message.includes('column')) {
+          delete payload.contact_urgence;
+          delete payload.observations_medicales;
+          const retry = await supabase.from('athletes').insert([payload]);
+          if (retry.error) throw retry.error;
+        } else if (error) {
+          throw error;
+        }
         toast.success('Athlète créé avec succès !');
       }
       
       navigate('/athletes');
     } catch (error) {
-      console.error('Error creating athlete:', error.message);
-      toast.error('Erreur lors de la création : ' + error.message);
+      console.error('Error saving athlete:', error.message);
+      toast.error('Erreur lors de la sauvegarde : ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -173,7 +191,7 @@ export default function AthleteForm() {
     <div style={{ maxWidth: '800px', margin: '0 auto' }}>
       <div className="mb-6">
         <h1>{id ? 'Modifier Athlète' : 'Nouvel Athlète'}</h1>
-        <p>{id ? 'Modifiez les informations de ce membre.' : 'Inscrivez un nouveau membre dans la base de données.'}</p>
+        <p>{id ? 'Modifiez les informations personnelles, médicales et de contact de ce membre.' : 'Inscrivez un nouveau membre dans la base de données.'}</p>
       </div>
 
       <motion.form 
@@ -183,6 +201,8 @@ export default function AthleteForm() {
         transition={{ delay: 0.1 }}
       >
         <Card className="p-6">
+        {/* SECTION INFORMATIONS GÉNÉRALES */}
+        <h3 className="text-base font-semibold mb-4 text-primary">Informations Personnelles</h3>
         <div className="grid md:grid-cols-2 gap-6">
           <div className="form-group">
             <label className="form-label">Nom *</label>
@@ -220,10 +240,11 @@ export default function AthleteForm() {
             />
           </div>
           <div className="form-group">
-            <label className="form-label">Téléphone</label>
+            <label className="form-label">Téléphone Personnel</label>
             <input 
               type="tel" 
               name="telephone" 
+              placeholder="ex: 0550123456"
               value={formData.telephone} 
               onChange={handleChange} 
               className="form-input" 
@@ -271,29 +292,14 @@ export default function AthleteForm() {
           </div>
         </div>
 
-        <div className="grid md:grid-cols-1 gap-6 mb-4">
-          <div className="form-group flex items-center">
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input 
-                type="checkbox" 
-                name="certificat_medical_valide" 
-                checked={formData.certificat_medical_valide} 
-                onChange={handleChange} 
-                style={{ width: '20px', height: '20px' }}
-              />
-              <span className="font-medium">Certificat médical valide fourni</span>
-            </label>
-          </div>
-        </div>
-
-        <div className="grid md:grid-cols-2 gap-6 mt-6">
+        <div className="grid md:grid-cols-2 gap-6 mt-2 mb-6">
           <div className="form-group">
             <label className="form-label">Photo de l'athlète</label>
             <div className="flex items-center gap-4 mt-2">
               <div 
                 style={{ 
-                  width: '80px', 
-                  height: '100px', 
+                  width: '70px', 
+                  height: '85px', 
                   backgroundColor: 'rgba(255,255,255,0.05)', 
                   border: '1px solid var(--border-color)',
                   borderRadius: '8px',
@@ -306,7 +312,7 @@ export default function AthleteForm() {
                 {photoPreview ? (
                   <img src={photoPreview} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
-                  <span className="text-muted text-sm text-center">Aucune photo</span>
+                  <span className="text-muted text-xs text-center">Aucune photo</span>
                 )}
               </div>
               <input 
@@ -316,6 +322,64 @@ export default function AthleteForm() {
                 className="form-input flex-1" 
               />
             </div>
+          </div>
+        </div>
+
+        {/* SECTION SÉCURITÉ & SANTÉ (DEMANDÉE PAR L'ADMINISTRATEUR) */}
+        <div className="pt-6" style={{ borderTop: '1px solid var(--border-color)' }}>
+          <h3 className="text-base font-semibold mb-4 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+            <ShieldAlert size={20} style={{ color: '#ef4444' }} /> Sécurité & Informations Médicales
+          </h3>
+          
+          <div className="grid md:grid-cols-2 gap-6 mb-4">
+            <div className="form-group">
+              <label className="form-label flex items-center gap-2">
+                <PhoneCall size={16} style={{ color: '#f59e0b' }} /> Contact d'Urgence (Parent / Tuteur)
+              </label>
+              <input 
+                type="tel" 
+                name="contact_urgence" 
+                value={formData.contact_urgence} 
+                onChange={handleChange} 
+                placeholder="ex: 0555998877 (Distinct du tél. athlète)"
+                className="form-input" 
+              />
+              <div className="text-xs text-muted mt-1">Numéro prioritaire à joindre immédiatement en cas d'urgence.</div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label flex items-center gap-2">
+                <HeartPulse size={16} style={{ color: '#10b981' }} /> Certificat Médical
+              </label>
+              <div className="flex items-center gap-3 mt-3">
+                <input 
+                  type="checkbox" 
+                  name="certificat_medical_valide" 
+                  id="certificat_medical_valide"
+                  checked={formData.certificat_medical_valide} 
+                  onChange={handleChange} 
+                  style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+                />
+                <label htmlFor="certificat_medical_valide" className="font-medium cursor-pointer" style={{ color: 'var(--text-primary)', fontSize: '0.9rem' }}>
+                  Certificat médical de non-contre-indication fourni
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label flex items-center gap-2">
+              <FileText size={16} style={{ color: '#3b82f6' }} /> Observations & Antécédents Médicaux
+            </label>
+            <textarea 
+              name="observations_medicales" 
+              value={formData.observations_medicales} 
+              onChange={handleChange} 
+              placeholder="Allergies connues, asthme, traitements en cours, port de lunettes, précautions d'entraînement..."
+              className="form-input" 
+              rows={3}
+              style={{ width: '100%', resize: 'vertical' }}
+            />
           </div>
         </div>
 
