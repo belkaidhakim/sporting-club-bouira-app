@@ -607,40 +607,142 @@ export default function FinancialDashboard() {
 
       {/* TABLES TABS */}
       <Card noPadding>
-        <div className="flex border-b border-[rgba(255,255,255,0.1)]">
+        <div 
+          className="flex flex-wrap gap-2 p-3" 
+          style={{ 
+            backgroundColor: 'var(--bg-tertiary)', 
+            borderBottom: '1px solid var(--border-color)',
+            borderTopLeftRadius: 'var(--radius-lg)',
+            borderTopRightRadius: 'var(--radius-lg)'
+          }}
+        >
           <button 
-            className={`px-6 py-4 font-semibold text-sm transition-colors ${activeTab === 'revenus' ? 'text-success border-b-2 border-success' : 'text-muted hover:text-white'}`}
-            style={{ borderBottom: activeTab === 'revenus' ? '2px solid var(--accent-success)' : 'none', color: activeTab === 'revenus' ? 'var(--accent-success)' : 'var(--text-muted)' }}
+            className="flex items-center gap-2 px-5 py-3 rounded-lg font-semibold text-sm transition-all"
+            style={{ 
+              backgroundColor: activeTab === 'revenus' ? 'rgba(16, 185, 129, 0.15)' : 'transparent',
+              border: activeTab === 'revenus' ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid transparent',
+              color: activeTab === 'revenus' ? 'var(--accent-success)' : 'var(--text-muted)',
+              boxShadow: activeTab === 'revenus' ? '0 0 12px rgba(16, 185, 129, 0.2)' : 'none',
+              cursor: 'pointer'
+            }}
             onClick={() => setActiveTab('revenus')}
           >
+            <TrendingUp size={16} />
             Historique des Revenus
+            <span 
+              style={{ 
+                marginLeft: '6px', 
+                padding: '2px 8px', 
+                borderRadius: '9999px', 
+                backgroundColor: activeTab === 'revenus' ? 'var(--accent-success)' : 'rgba(255,255,255,0.1)',
+                color: activeTab === 'revenus' ? '#fff' : 'var(--text-muted)',
+                fontSize: '0.75rem',
+                fontWeight: 700
+              }}
+            >
+              {filteredCotisations.length}
+            </span>
           </button>
+
           <button 
-            className={`px-6 py-4 font-semibold text-sm transition-colors ${activeTab === 'depenses' ? 'text-danger border-b-2 border-danger' : 'text-muted hover:text-white'}`}
-            style={{ borderBottom: activeTab === 'depenses' ? '2px solid var(--accent-danger)' : 'none', color: activeTab === 'depenses' ? 'var(--accent-danger)' : 'var(--text-muted)' }}
+            className="flex items-center gap-2 px-5 py-3 rounded-lg font-semibold text-sm transition-all"
+            style={{ 
+              backgroundColor: activeTab === 'depenses' ? 'rgba(239, 68, 68, 0.15)' : 'transparent',
+              border: activeTab === 'depenses' ? '1px solid rgba(239, 68, 68, 0.35)' : '1px solid transparent',
+              color: activeTab === 'depenses' ? 'var(--accent-danger)' : 'var(--text-muted)',
+              boxShadow: activeTab === 'depenses' ? '0 0 12px rgba(239, 68, 68, 0.2)' : 'none',
+              cursor: 'pointer'
+            }}
             onClick={() => setActiveTab('depenses')}
           >
+            <TrendingDown size={16} />
             Historique des Dépenses
+            <span 
+              style={{ 
+                marginLeft: '6px', 
+                padding: '2px 8px', 
+                borderRadius: '9999px', 
+                backgroundColor: activeTab === 'depenses' ? 'var(--accent-danger)' : 'rgba(255,255,255,0.1)',
+                color: activeTab === 'depenses' ? '#fff' : 'var(--text-muted)',
+                fontSize: '0.75rem',
+                fontWeight: 700
+              }}
+            >
+              {filteredDepenses.length}
+            </span>
           </button>
         </div>
 
         <div className="p-4 flex flex-wrap justify-between items-center gap-4 border-b border-[rgba(255,255,255,0.05)]">
-          <div className="flex flex-wrap gap-3">
-            <div className="relative" style={{ width: '200px' }}>
-              <Search size={16} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-              <input type="text" placeholder="Rechercher..." className="form-input" style={{ paddingLeft: '2.25rem' }} value={searchName} onChange={(e) => setSearchName(e.target.value)} />
+          <div className="flex flex-wrap gap-3 items-center">
+            <div className="relative" style={{ minWidth: '220px' }}>
+              <Search size={16} style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              <input 
+                type="text" 
+                placeholder="Rechercher par nom / motif..." 
+                className="form-input" 
+                style={{ 
+                  paddingLeft: '2.5rem', 
+                  backgroundColor: 'var(--bg-tertiary)', 
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 'var(--radius-md)' 
+                }} 
+                value={searchName} 
+                onChange={(e) => setSearchName(e.target.value)} 
+              />
             </div>
-            <select className="form-select w-[130px]" value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)}>
-              <option value="all">Tous les mois</option>
-              {['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'].map((m, i) => <option key={i} value={i}>{m}</option>)}
-            </select>
-            <select className="form-select w-[100px]" value={filterYear} onChange={(e) => setFilterYear(e.target.value)}>
-              <option value="all">Année</option>
-              <option value="2025">2025</option>
-              <option value="2026">2026</option>
-              <option value="2027">2027</option>
-            </select>
-            <Button variant="secondary" onClick={exportToCSV}><Download size={16} /> Export CSV</Button>
+            
+            <div className="relative" style={{ minWidth: '150px' }}>
+              <select 
+                className="form-select" 
+                style={{ 
+                  width: '100%',
+                  backgroundColor: 'var(--bg-tertiary)', 
+                  border: '1px solid var(--border-color)', 
+                  borderRadius: 'var(--radius-md)',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.85rem',
+                  fontWeight: 500,
+                  padding: '0.5rem 1rem',
+                  cursor: 'pointer'
+                }} 
+                value={filterMonth} 
+                onChange={(e) => setFilterMonth(e.target.value)}
+              >
+                <option value="all">📅 Tous les mois</option>
+                {['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'].map((m, i) => (
+                  <option key={i} value={i}>{m}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="relative" style={{ minWidth: '130px' }}>
+              <select 
+                className="form-select" 
+                style={{ 
+                  width: '100%',
+                  backgroundColor: 'var(--bg-tertiary)', 
+                  border: '1px solid var(--border-color)', 
+                  borderRadius: 'var(--radius-md)',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.85rem',
+                  fontWeight: 500,
+                  padding: '0.5rem 1rem',
+                  cursor: 'pointer'
+                }} 
+                value={filterYear} 
+                onChange={(e) => setFilterYear(e.target.value)}
+              >
+                <option value="all">📆 Toutes années</option>
+                <option value="2025">2025</option>
+                <option value="2026">2026</option>
+                <option value="2027">2027</option>
+              </select>
+            </div>
+
+            <Button variant="secondary" onClick={exportToCSV}>
+              <Download size={16} /> Export CSV
+            </Button>
           </div>
         </div>
         
