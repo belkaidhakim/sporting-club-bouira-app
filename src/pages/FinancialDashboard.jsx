@@ -24,6 +24,13 @@ const depenseSchema = z.object({
   date_depense: z.string().min(1, 'Date requise'),
 });
 
+const formatDZ = (val) => {
+  if (val === undefined || val === null || val === '') return '0 DZ';
+  const num = Number(val);
+  if (isNaN(num)) return '0 DZ';
+  return `${num.toLocaleString('fr-FR')} DZ`;
+};
+
 export default function FinancialDashboard() {
   const { cotisations, loading: cotisLoading, fetchCotisations } = useCotisations();
   const { depenses, loading: depensesLoading, fetchDepenses } = useDepenses();
@@ -327,7 +334,7 @@ export default function FinancialDashboard() {
     doc.setFontSize(12); doc.text(`${cotisation.athletes.nom.toUpperCase()} ${cotisation.athletes.prenom}`, 20, 80);
     doc.setFillColor(248, 250, 252); doc.rect(20, 100, 170, 60, 'F');
     doc.text(`Montant payé :`, 30, 120);
-    doc.setFontSize(16); doc.setTextColor(16, 185, 129); doc.text(`${cotisation.montant_paye} DZ`, 150, 120);
+    doc.setFontSize(16); doc.setTextColor(16, 185, 129); doc.text(`${formatDZ(cotisation.montant_paye)}`, 140, 120);
     doc.setFontSize(12); doc.setTextColor(30, 41, 59);
     doc.text(`Mode de paiement : ${cotisation.mode_paiement}`, 30, 135);
     doc.text(`Couverture jusqu'au : ${new Date(cotisation.periode_couverte_fin).toLocaleDateString('fr-FR')}`, 30, 150);
@@ -365,9 +372,9 @@ export default function FinancialDashboard() {
             </div>
           </div>
           <div style={{ fontSize: '2rem', fontWeight: 'bold', fontFamily: 'Outfit', color: 'var(--accent-success)' }}>
-            + {stats.totalRevenue} DZ
+            + {formatDZ(stats.totalRevenue)}
           </div>
-          <div className="text-xs text-muted">Ce mois: +{stats.totalThisMonth} DZ</div>
+          <div className="text-xs text-muted">Ce mois: +{formatDZ(stats.totalThisMonth)}</div>
         </Card>
 
         <Card className="flex-col gap-4">
@@ -378,9 +385,9 @@ export default function FinancialDashboard() {
             </div>
           </div>
           <div style={{ fontSize: '2rem', fontWeight: 'bold', fontFamily: 'Outfit', color: 'var(--accent-danger)' }}>
-            - {stats.totalDepenses} DZ
+            - {formatDZ(stats.totalDepenses)}
           </div>
-          <div className="text-xs text-muted">Ce mois: -{stats.depensesThisMonth} DZ</div>
+          <div className="text-xs text-muted">Ce mois: -{formatDZ(stats.depensesThisMonth)}</div>
         </Card>
         
         <Card className="flex-col gap-4" style={{ border: '2px solid rgba(56, 189, 248, 0.2)' }}>
@@ -391,9 +398,9 @@ export default function FinancialDashboard() {
             </div>
           </div>
           <div style={{ fontSize: '2rem', fontWeight: 'bold', fontFamily: 'Outfit', color: stats.beneficeNet >= 0 ? 'white' : 'var(--accent-danger)' }}>
-            {stats.beneficeNet} DZ
+            {stats.beneficeNet > 0 ? '+' : ''}{formatDZ(stats.beneficeNet)}
           </div>
-          <div className="text-xs text-muted">Ce mois: {stats.beneficeThisMonth} DZ</div>
+          <div className="text-xs text-muted">Ce mois: {stats.beneficeThisMonth > 0 ? '+' : ''}{formatDZ(stats.beneficeThisMonth)}</div>
         </Card>
       </div>
 
@@ -568,7 +575,7 @@ export default function FinancialDashboard() {
                     <tr key={cotis.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                       <td className="p-4">{new Date(cotis.date_paiement).toLocaleDateString('fr-FR')}</td>
                       <td className="p-4 font-medium">{cotis.athletes?.nom} {cotis.athletes?.prenom}</td>
-                      <td className="p-4 text-success font-semibold">+{cotis.montant_paye} DZ</td>
+                      <td className="p-4 text-success font-semibold">+{formatDZ(cotis.montant_paye)}</td>
                       <td className="p-4">{cotis.mode_paiement}</td>
                       <td className="p-4 text-right">
                         <div className="flex justify-end gap-2">
@@ -611,7 +618,7 @@ export default function FinancialDashboard() {
                           {dep.categorie}
                         </span>
                       </td>
-                      <td className="p-4 text-right text-danger font-semibold">-{dep.montant} DZ</td>
+                      <td className="p-4 text-right text-danger font-semibold">-{formatDZ(dep.montant)}</td>
                     </tr>
                   ))}
                 </tbody>
