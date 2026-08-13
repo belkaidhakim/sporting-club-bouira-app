@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Plus, Search, QrCode, Edit, Printer, Download, Upload, Trash2 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import BadgeGenerator from '../components/BadgeGenerator';
 import toast from 'react-hot-toast';
@@ -9,10 +9,11 @@ import { useAthletes } from '../hooks/useAthletes';
 import { Card, Button, Badge, Skeleton } from '../components/ui';
 
 export default function AthletesList() {
+  const [searchParams] = useSearchParams();
   const { athletes, loading, fetchAthletes, archiveAthlete, toggleAccessStatus } = useAthletes();
   const [selectedAthlete, setSelectedAthlete] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [groupFilter, setGroupFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('search') || '');
+  const [groupFilter, setGroupFilter] = useState(() => searchParams.get('groupe') || 'all');
   const [selectedAthletes, setSelectedAthletes] = useState([]);
   const [showBulkPrint, setShowBulkPrint] = useState(false);
   const fileInputRef = useRef(null);

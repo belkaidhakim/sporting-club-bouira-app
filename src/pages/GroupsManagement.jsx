@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { Card, Button, Skeleton } from '../components/ui';
-import { Users, Edit2, Plus, CalendarDays, Clock, Trash2, AlertTriangle } from 'lucide-react';
+import { Users, Edit2, Plus, CalendarDays, Clock, Trash2, AlertTriangle, ScanLine } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const parseHoraires = (horairesText) => {
@@ -221,16 +222,44 @@ export default function GroupsManagement() {
               >
                 <div className="flex-1 flex flex-col justify-between">
                   <div>
-                    {/* Entête Carte */}
-                    <div className="flex justify-between items-start mb-4">
-                      <h2 style={{ fontSize: '1.25rem', margin: 0, fontWeight: 700 }}>{groupe.nom}</h2>
-                      <button 
-                        onClick={() => handleOpenModal(groupe)}
-                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px' }}
-                        title="Modifier le groupe"
-                      >
-                        <Edit2 size={16} />
-                      </button>
+                    {/* Entête Carte avec Actions Rapides */}
+                    <div className="flex flex-wrap justify-between items-start mb-4 gap-2">
+                      <div>
+                        <h2 style={{ fontSize: '1.25rem', margin: 0, fontWeight: 700 }}>{groupe.nom}</h2>
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        <Link to={`/athletes?search=${encodeURIComponent(groupe.nom)}`} style={{ textDecoration: 'none' }}>
+                          <button 
+                            style={{ 
+                              display: 'inline-flex', 
+                              alignItems: 'center', 
+                              gap: '5px',
+                              padding: '5px 11px', 
+                              borderRadius: 'var(--radius-full)', 
+                              backgroundColor: 'rgba(99, 102, 241, 0.12)', 
+                              border: '1px solid rgba(99, 102, 241, 0.25)',
+                              color: 'var(--accent-primary-hover)',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              transition: 'all 0.2s ease'
+                            }}
+                            title="Voir les membres de ce groupe"
+                          >
+                            <Users size={12} />
+                            Voir la liste ({inscrits})
+                          </button>
+                        </Link>
+
+                        <button 
+                          onClick={() => handleOpenModal(groupe)}
+                          style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px' }}
+                          title="Modifier le groupe"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                      </div>
                     </div>
                     
                     <div className="flex flex-col gap-3 mb-4">
@@ -340,6 +369,22 @@ export default function GroupsManagement() {
                       <span style={{ color: progressColor, fontWeight: 700 }}>
                         {statusBadgeText}
                       </span>
+                    </div>
+
+                    <div className="flex justify-between items-center mt-2 pt-2" style={{ fontSize: '0.75rem', borderTop: '1px dashed var(--border-color)' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Pointage d'entraînement</span>
+                      <Link to="/scanner" target="_blank" style={{ textDecoration: 'none' }}>
+                        <span style={{ 
+                          color: 'var(--accent-secondary)', 
+                          fontWeight: 600, 
+                          display: 'inline-flex', 
+                          alignItems: 'center', 
+                          gap: '4px',
+                          cursor: 'pointer'
+                        }}>
+                          <ScanLine size={12} /> Faire l'appel (Scanner) →
+                        </span>
+                      </Link>
                     </div>
                   </div>
                 </div>
