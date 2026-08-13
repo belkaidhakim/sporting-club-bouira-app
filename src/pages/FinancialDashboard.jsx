@@ -401,14 +401,22 @@ export default function FinancialDashboard() {
       <Card className="mb-8 p-4">
         <h3 className="text-sm font-semibold text-muted mb-4">Évolution Financière ({new Date().getFullYear()})</h3>
         {chartData.length > 0 ? (
-          <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+          <ResponsiveContainer width="100%" height={270}>
+            <BarChart data={chartData} margin={{ top: 10, right: 20, left: 35, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
               <XAxis dataKey="name" stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} />
-              <YAxis stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} />
+              <YAxis 
+                stroke="var(--text-muted)" 
+                fontSize={11} 
+                tickLine={false} 
+                axisLine={false}
+                width={75}
+                tickFormatter={(val) => val >= 1000 ? `${(val / 1000).toLocaleString('fr-FR')}k DZ` : `${val} DZ`}
+              />
               <Tooltip 
                 cursor={{ fill: 'rgba(255,255,255,0.05)' }}
                 contentStyle={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '8px' }}
+                formatter={(value) => [`${Number(value).toLocaleString('fr-FR')} DZ`, '']}
               />
               <Legend />
               <Bar dataKey="Revenus" fill="var(--accent-success)" radius={[4, 4, 0, 0]} />
