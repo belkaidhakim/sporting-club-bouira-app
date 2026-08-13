@@ -6,14 +6,16 @@ import BadgeGenerator from '../components/BadgeGenerator';
 import toast from 'react-hot-toast';
 import Papa from 'papaparse';
 import { useAthletes } from '../hooks/useAthletes';
+import { useGroupes } from '../hooks/useGroupes';
 import { Card, Button, Badge, Skeleton } from '../components/ui';
 
 export default function AthletesList() {
   const [searchParams] = useSearchParams();
   const { athletes, loading, fetchAthletes, archiveAthlete, toggleAccessStatus } = useAthletes();
+  const { groupes } = useGroupes();
   const [selectedAthlete, setSelectedAthlete] = useState(null);
-  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('search') || '');
-  const [groupFilter, setGroupFilter] = useState(() => searchParams.get('groupe') || 'all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [groupFilter, setGroupFilter] = useState('all');
   const [selectedAthletes, setSelectedAthletes] = useState([]);
   const [showBulkPrint, setShowBulkPrint] = useState(false);
   const fileInputRef = useRef(null);
@@ -21,6 +23,19 @@ export default function AthletesList() {
   useEffect(() => {
     fetchAthletes();
   }, [fetchAthletes]);
+
+  useEffect(() => {
+    const gParam = searchParams.get('groupe');
+    const sParam = searchParams.get('search');
+    if (gParam) {
+      setGroupFilter(gParam);
+      setSearchQuery('');
+    } else if (sParam) {
+      // Si sParam correspond à un nom de groupe existant, régler groupFilter
+      setGroupFilter(sParam);
+      setSearchQuery('');
+    }
+  }, [searchParams]);
 
   const handleDelete = async (athleteId) => {
     if (!window.confirm("Voulez-vous vraiment archiver cet athlète ?")) return;
@@ -126,9 +141,19 @@ export default function AthletesList() {
   };
 
   const filteredAthletes = athletes.filter(athlete => {
-    const fullName = `${athlete.nom} ${athlete.prenom}`.toLowerCase();
-    const matchesSearch = fullName.includes(searchQuery.toLowerCase());
-    const matchesGroup = groupFilter === 'all' || athlete.groupe === groupFilter;
+    const nom = (athlete.nom || '').toLowerCase();
+    const prenom = (athlete.prenom || '').toLowerCase();
+    const groupeNom = (athlete.groupes?.nom || athlete.groupe || '').toLowerCase();
+    const q = searchQuery.toLowerCase().trim();
+
+    const matchesSearch = !q || nom.includes(q) || prenom.includes(q) || groupeNom.includes(q);
+
+    const gFilter = groupFilter.toLowerCase().trim();
+    const matchesGroup = groupFilter === 'all' || 
+                         groupeNom === gFilter || 
+                         groupeNom.includes(gFilter) ||
+                         String(athlete.groupe_id) === String(groupFilter);
+
     return matchesSearch && matchesGroup;
   });
 
@@ -183,14 +208,14 @@ export default function AthletesList() {
           </div>
           <select 
             className="form-select" 
-            style={{ width: '180px' }}
+            style={{ width: '200px' }}
             value={groupFilter}
             onChange={(e) => setGroupFilter(e.target.value)}
           >
             <option value="all">Tous les groupes</option>
-            <option value="Initiation">Initiation</option>
-            <option value="Apprentissage">Apprentissage</option>
-            <option value="Entraînement">Entraînement</option>
+            {groupes.map(g => (
+              <option key={g.id} value={g.nom}>{g.nom}</option>
+            ))}
           </select>
         </div>
         
