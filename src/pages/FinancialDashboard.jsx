@@ -135,6 +135,33 @@ export default function FinancialDashboard() {
     };
   }, [cotisations, depenses]);
 
+  const expiredCount = useMemo(() => {
+    const now = new Date();
+    const lastCotisMap = new Map();
+    cotisations.forEach(c => {
+      if (c.athlete_id && c.periode_couverte_fin) {
+        const existing = lastCotisMap.get(c.athlete_id);
+        const curDate = new Date(c.periode_couverte_fin);
+        if (!existing || curDate > new Date(existing.periode_couverte_fin)) {
+          lastCotisMap.set(c.athlete_id, c);
+        }
+      }
+    });
+
+    let count = 0;
+    lastCotisMap.forEach((c) => {
+      if (new Date(c.periode_couverte_fin) < now) {
+        count++;
+      }
+    });
+    return count;
+  }, [cotisations]);
+
+  const currentMonthName = useMemo(() => {
+    const months = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+    return months[new Date().getMonth()];
+  }, []);
+
   const chartData = useMemo(() => {
     const currentYear = new Date().getFullYear();
     const months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
@@ -350,8 +377,25 @@ export default function FinancialDashboard() {
           <p>Suivez vos revenus, vos dépenses et calculez vos bénéfices.</p>
         </div>
         <div className="flex flex-wrap gap-3">
-          <Button variant="secondary" onClick={checkExpirations}>
+          <Button variant="secondary" onClick={checkExpirations} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
             <AlertTriangle size={18} className="text-warning" /> Expirations
+            {expiredCount > 0 && (
+              <span 
+                style={{ 
+                  backgroundColor: '#ef4444', 
+                  color: 'white', 
+                  borderRadius: '9999px', 
+                  padding: '2px 7px', 
+                  fontSize: '0.75rem', 
+                  fontWeight: 700,
+                  lineHeight: 1,
+                  boxShadow: '0 0 8px rgba(239, 68, 68, 0.5)'
+                }}
+                title={`${expiredCount} cotisation(s) expirée(s)`}
+              >
+                {expiredCount}
+              </span>
+            )}
           </Button>
           <Button variant="danger" onClick={() => { setShowDepenseForm(true); setShowPaymentForm(false); }}>
             - Dépense
@@ -365,8 +409,11 @@ export default function FinancialDashboard() {
       {/* TOP KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <Card className="flex-col gap-4">
-          <div className="flex justify-between items-center">
-            <h3 className="text-sm font-semibold text-muted mb-0">Total Revenus</h3>
+          <div className="flex justify-between items-start">
+            <div>
+              <h3 className="text-sm font-semibold text-muted mb-0">Total Revenus</h3>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Historique Global</span>
+            </div>
             <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: 'rgba(16, 185, 129, 0.1)', color: 'var(--accent-success)' }}>
               <TrendingUp size={20} />
             </div>
@@ -374,12 +421,18 @@ export default function FinancialDashboard() {
           <div style={{ fontSize: '2rem', fontWeight: 'bold', fontFamily: 'Outfit', color: 'var(--accent-success)' }}>
             + {formatDZ(stats.totalRevenue)}
           </div>
-          <div className="text-xs text-muted">Ce mois: +{formatDZ(stats.totalThisMonth)}</div>
+          <div className="text-xs text-muted" style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px border-dashed rgba(255,255,255,0.05)', paddingTop: '4px' }}>
+            <span>Ce mois ({currentMonthName}) :</span>
+            <span style={{ fontWeight: 600, color: 'var(--accent-success)' }}>+{formatDZ(stats.totalThisMonth)}</span>
+          </div>
         </Card>
 
         <Card className="flex-col gap-4">
-          <div className="flex justify-between items-center">
-            <h3 className="text-sm font-semibold text-muted mb-0">Total Dépenses</h3>
+          <div className="flex justify-between items-start">
+            <div>
+              <h3 className="text-sm font-semibold text-muted mb-0">Total Dépenses</h3>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Historique Global</span>
+            </div>
             <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: 'var(--accent-danger)' }}>
               <TrendingDown size={20} />
             </div>
@@ -387,12 +440,18 @@ export default function FinancialDashboard() {
           <div style={{ fontSize: '2rem', fontWeight: 'bold', fontFamily: 'Outfit', color: 'var(--accent-danger)' }}>
             - {formatDZ(stats.totalDepenses)}
           </div>
-          <div className="text-xs text-muted">Ce mois: -{formatDZ(stats.depensesThisMonth)}</div>
+          <div className="text-xs text-muted" style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px border-dashed rgba(255,255,255,0.05)', paddingTop: '4px' }}>
+            <span>Ce mois ({currentMonthName}) :</span>
+            <span style={{ fontWeight: 600, color: 'var(--accent-danger)' }}>-{formatDZ(stats.depensesThisMonth)}</span>
+          </div>
         </Card>
         
         <Card className="flex-col gap-4" style={{ border: '2px solid rgba(56, 189, 248, 0.2)' }}>
-          <div className="flex justify-between items-center">
-            <h3 className="text-sm font-semibold text-muted mb-0">Bénéfice Net</h3>
+          <div className="flex justify-between items-start">
+            <div>
+              <h3 className="text-sm font-semibold text-muted mb-0">Bénéfice Net</h3>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Cumul Global</span>
+            </div>
             <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8' }}>
               <DollarSign size={20} />
             </div>
@@ -400,7 +459,12 @@ export default function FinancialDashboard() {
           <div style={{ fontSize: '2rem', fontWeight: 'bold', fontFamily: 'Outfit', color: stats.beneficeNet >= 0 ? 'white' : 'var(--accent-danger)' }}>
             {stats.beneficeNet > 0 ? '+' : ''}{formatDZ(stats.beneficeNet)}
           </div>
-          <div className="text-xs text-muted">Ce mois: {stats.beneficeThisMonth > 0 ? '+' : ''}{formatDZ(stats.beneficeThisMonth)}</div>
+          <div className="text-xs text-muted" style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px border-dashed rgba(255,255,255,0.05)', paddingTop: '4px' }}>
+            <span>Ce mois ({currentMonthName}) :</span>
+            <span style={{ fontWeight: 600, color: stats.beneficeThisMonth >= 0 ? '#38bdf8' : 'var(--accent-danger)' }}>
+              {stats.beneficeThisMonth > 0 ? '+' : ''}{formatDZ(stats.beneficeThisMonth)}
+            </span>
+          </div>
         </Card>
       </div>
 
