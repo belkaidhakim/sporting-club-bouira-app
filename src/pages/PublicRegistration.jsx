@@ -20,10 +20,13 @@ import {
   Users,
   ChevronRight,
   Sparkles,
-  AlertTriangle
+  AlertTriangle,
+  Lock,
+  Clock
 } from 'lucide-react';
 import { Button } from '../components/ui';
 import { useGroupes } from '../hooks/useGroupes';
+import { useRegistrationSettings } from '../hooks/useRegistrationSettings';
 
 // Masquage et formatage automatique du téléphone (ex: 05 50 12 34 56)
 const formatPhoneInput = (val = '') => {
@@ -101,6 +104,7 @@ const registrationSchema = z.object({
 
 export default function PublicRegistration() {
   const { groupes } = useGroupes();
+  const { isOpen: isRegistrationOpen, loading: settingsLoading } = useRegistrationSettings();
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submissionResult, setSubmissionResult] = useState(null);
@@ -698,8 +702,46 @@ export default function PublicRegistration() {
           </div>
         </div>
 
-        {/* ÉCRAN DE CONFIRMATION SUCCÈS */}
-        {submitted && submissionResult ? (
+        {/* ÉCRAN D'INSCRIPTIONS FERMÉES (DÉSACTIVÉES) */}
+        {!settingsLoading && !isRegistrationOpen && !submitted ? (
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}>
+            <div style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '20px',
+              padding: '3rem 2rem',
+              boxShadow: '0 20px 40px -15px rgba(0,0,0,0.08), 0 0 1px 1px rgba(0,0,0,0.05)',
+              border: '1px solid #e2e8f0',
+              textAlign: 'center'
+            }}>
+              <div style={{ width: '70px', height: '70px', borderRadius: '50%', backgroundColor: '#fffbeb', color: '#d97706', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1.25rem', border: '2px solid #fde68a' }}>
+                <Lock size={36} />
+              </div>
+              <h2 style={{ fontSize: '1.6rem', fontWeight: 900, margin: '0 0 0.5rem', color: '#0f172a' }}>
+                Inscriptions en Ligne Actuellement Fermées
+              </h2>
+              <p style={{ color: '#64748b', fontSize: '0.95rem', maxWidth: '580px', margin: '0 auto 1.75rem', lineHeight: '1.6' }}>
+                Les pré-inscriptions en ligne pour le <strong>Sporting Club Bouira</strong> sont temporairement suspendues par l'administration du club (période de clôture des sessions ou quotas atteints).
+              </p>
+
+              {/* Encadré d'information et contact */}
+              <div style={{ textAlign: 'left', backgroundColor: '#f8fafc', padding: '1.5rem', borderRadius: '14px', border: '1px solid #e2e8f0', maxWidth: '560px', margin: '0 auto 1.5rem' }}>
+                <h4 style={{ margin: '0 0 0.75rem', fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Phone size={18} color="#6366f1" /> Contact du Secrétariat Général :
+                </h4>
+                <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.88rem', color: '#475569', lineHeight: '1.7' }}>
+                  <li>Pour toute inscription tardive ou demande d'information, veuillez vous présenter directement au siège du club.</li>
+                  <li><strong>Adresse :</strong> Complexe Sportif, Wilaya de Bouira</li>
+                  <li><strong>Téléphone :</strong> <a href="tel:0550000000" style={{ color: '#6366f1', fontWeight: 700 }}>+213 (0) 550 00 00 00</a></li>
+                  <li><strong>Horaires d'accueil :</strong> Du Dimanche au Jeudi, de 09h00 à 17h00</li>
+                </ul>
+              </div>
+
+              <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+                Sporting Club Bouira · Club Amateur Sportif
+              </div>
+            </div>
+          </motion.div>
+        ) : submitted && submissionResult ? (
           <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}>
             <div style={{
               backgroundColor: '#ffffff',

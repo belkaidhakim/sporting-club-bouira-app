@@ -24,10 +24,13 @@ import {
   DollarSign,
   CheckSquare,
   Square,
-  Sparkles
+  Sparkles,
+  Lock,
+  Unlock
 } from 'lucide-react';
 import { Card, Button, Skeleton } from '../components/ui';
 import { useInscriptions } from '../hooks/useInscriptions';
+import { useRegistrationSettings } from '../hooks/useRegistrationSettings';
 import BadgeGenerator from '../components/BadgeGenerator';
 
 // Calcul précis de l'âge
@@ -68,6 +71,8 @@ export default function PendingInscriptions() {
     rejeterInscription, 
     deleteInscription 
   } = useInscriptions();
+
+  const { isOpen: isRegistrationOpen, toggleInscriptions } = useRegistrationSettings();
 
   const [activeTab, setActiveTab] = useState('EN_ATTENTE'); // 'EN_ATTENTE', 'VALIDE', 'REJETE', 'ALL'
   const [searchQuery, setSearchQuery] = useState('');
@@ -264,7 +269,37 @@ CREATE POLICY "Admins can delete inscriptions" ON public.inscriptions FOR DELETE
           <p style={{ margin: '2px 0 0', fontSize: '0.85rem' }}>Examinez les dossiers d'adhésion en ligne, vérifiez les pièces justificatives et intégrez les nouveaux membres.</p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Bouton Toggle Inscriptions Ouvertes / Fermées */}
+          <button
+            onClick={() => toggleInscriptions()}
+            style={{
+              padding: '0.4rem 0.85rem',
+              fontSize: '0.8rem',
+              fontWeight: 700,
+              borderRadius: '8px',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              backgroundColor: isRegistrationOpen ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+              color: isRegistrationOpen ? '#ef4444' : '#10b981',
+              border: isRegistrationOpen ? '1px solid rgba(239, 68, 68, 0.35)' : '1px solid rgba(16, 185, 129, 0.35)',
+              transition: 'all 0.2s'
+            }}
+            title={isRegistrationOpen ? "Cliquez pour fermer les inscriptions publiques" : "Cliquez pour ré-ouvrir les inscriptions publiques"}
+          >
+            {isRegistrationOpen ? (
+              <>
+                <Lock size={14} /> Désactiver les Inscriptions
+              </>
+            ) : (
+              <>
+                <Unlock size={14} /> Réactiver les Inscriptions
+              </>
+            )}
+          </button>
+
           <Button 
             variant="secondary" 
             onClick={copyPublicLink}

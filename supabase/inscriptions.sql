@@ -58,3 +58,33 @@ CREATE POLICY "Admins can delete inscriptions"
   FOR DELETE
   TO authenticated
   USING (true);
+
+-- 5. Table des paramètres généraux du club (Statut inscriptions ouvertes/fermées, etc.)
+CREATE TABLE IF NOT EXISTS public.club_settings (
+  key TEXT PRIMARY KEY,
+  value JSONB NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.club_settings ENABLE ROW LEVEL SECURITY;
+
+-- Tout le monde (y compris public) peut lire les paramètres
+DROP POLICY IF EXISTS "Public can read club_settings" ON public.club_settings;
+CREATE POLICY "Public can read club_settings"
+  ON public.club_settings
+  FOR SELECT
+  USING (true);
+
+-- Seuls les administrateurs et secrétaires peuvent modifier les paramètres
+DROP POLICY IF EXISTS "Admins can update club_settings" ON public.club_settings;
+CREATE POLICY "Admins can update club_settings"
+  ON public.club_settings
+  FOR ALL
+  TO authenticated
+  USING (true)
+  WITH CHECK (true);
+
+-- Initialisation du paramètre des inscriptions ouvertes par défaut
+INSERT INTO public.club_settings (key, value)
+VALUES ('inscriptions_ouvertes', '{"is_open": true}')
+ON CONFLICT (key) DO NOTHING;
