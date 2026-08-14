@@ -441,31 +441,53 @@ export default function FinancialDashboard() {
     document.body.removeChild(link);
   };
 
+  let cachedLogoBase64 = null;
+
   const loadLogoBase64 = () => {
+    if (cachedLogoBase64) return Promise.resolve(cachedLogoBase64);
     return new Promise((resolve) => {
-      const img = new Image();
-      img.crossOrigin = 'Anonymous';
-      img.onload = () => {
-        try {
-          const canvas = document.createElement('canvas');
-          canvas.width = img.width;
-          canvas.height = img.height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0);
-          resolve(canvas.toDataURL('image/jpeg', 0.95));
-        } catch {
+      const timer = setTimeout(() => {
+        resolve(null);
+      }, 500); // Timeout de sécurité 500ms max
+
+      try {
+        const img = new Image();
+        img.onload = () => {
+          clearTimeout(timer);
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth || img.width || 120;
+            canvas.height = img.naturalHeight || img.height || 120;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            const dataUri = canvas.toDataURL('image/jpeg', 0.9);
+            cachedLogoBase64 = dataUri;
+            resolve(dataUri);
+          } catch {
+            resolve(null);
+          }
+        };
+        img.onerror = () => {
+          clearTimeout(timer);
           resolve(null);
-        }
-      };
-      img.onerror = () => resolve(null);
-      img.src = '/logo.jpg';
+        };
+        img.src = '/logo.jpg';
+      } catch {
+        clearTimeout(timer);
+        resolve(null);
+      }
     });
   };
 
-  const generatePDFReceipt = async (cotisation) => {
+  const generatePDFReceipt = async (cotisation, autoDownload = false) => {
+    const toastId = toast.loading('Préparation du reçu...');
     try {
-      const toastId = toast.loading('Génération du reçu officiel en cours...');
-      const logoBase64 = await loadLogoBase64();
+      let logoBase64 = null;
+      try {
+        logoBase64 = await loadLogoBase64();
+      } catch (e) {
+        console.warn('Logo non chargé, continuation sans logo:', e);
+      }
       
       const doc = new jsPDF({
         orientation: 'portrait',
@@ -780,6 +802,7 @@ export default function FinancialDashboard() {
         toast.success('Aperçu du document prêt !');
       }
     } catch (err) {
+      toast.dismiss(toastId);
       console.error('Erreur génération PDF:', err);
       toast.error('Erreur lors de la génération de l\'aperçu : ' + err.message);
     }
