@@ -29,6 +29,7 @@ export default function PendingInscriptions() {
   const { 
     inscriptions, 
     loading, 
+    isTableMissing,
     fetchInscriptions, 
     validerInscription, 
     rejeterInscription, 
@@ -136,6 +137,50 @@ export default function PendingInscriptions() {
     }
   };
 
+  const copySqlScript = () => {
+    const sql = `-- Script d'activation de la table des inscriptions
+CREATE TABLE IF NOT EXISTS public.inscriptions (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  numero_dossier TEXT UNIQUE NOT NULL,
+  nom TEXT NOT NULL,
+  prenom TEXT NOT NULL,
+  date_naissance DATE NOT NULL,
+  sexe TEXT CHECK (sexe IN ('Homme', 'Femme')),
+  adresse TEXT,
+  telephone TEXT NOT NULL,
+  telephone_parent TEXT,
+  groupe_id UUID REFERENCES public.groupes(id) ON DELETE SET NULL,
+  groupe_nom TEXT,
+  observations_medicales TEXT,
+  photo TEXT,
+  certificat_medical TEXT,
+  autorisation_parentale TEXT,
+  consentement_loi_18_07 BOOLEAN DEFAULT true NOT NULL,
+  reglement_accepte BOOLEAN DEFAULT true NOT NULL,
+  statut TEXT CHECK (statut IN ('EN_ATTENTE', 'VALIDE', 'REJETE')) DEFAULT 'EN_ATTENTE',
+  motif_rejet TEXT,
+  date_demande TIMESTAMPTZ DEFAULT NOW(),
+  date_traitement TIMESTAMPTZ,
+  traite_par UUID REFERENCES auth.users(id)
+);
+
+ALTER TABLE public.inscriptions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Public can submit inscription" ON public.inscriptions;
+CREATE POLICY "Public can submit inscription" ON public.inscriptions FOR INSERT WITH CHECK (statut = 'EN_ATTENTE');
+
+DROP POLICY IF EXISTS "Admins and Staff can view all inscriptions" ON public.inscriptions;
+CREATE POLICY "Admins and Staff can view all inscriptions" ON public.inscriptions FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Admins and Staff can update inscriptions" ON public.inscriptions;
+CREATE POLICY "Admins and Staff can update inscriptions" ON public.inscriptions FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Admins can delete inscriptions" ON public.inscriptions;
+CREATE POLICY "Admins can delete inscriptions" ON public.inscriptions FOR DELETE TO authenticated USING (true);`;
+    navigator.clipboard.writeText(sql);
+    toast.success('Script SQL copié ! Collez-le dans l\'éditeur SQL de votre Supabase.');
+  };
+
   return (
     <div>
       {/* HEADER DE LA PAGE */}
@@ -164,6 +209,31 @@ export default function PendingInscriptions() {
           </Button>
         </div>
       </div>
+
+      {/* BANDEAU SI LA TABLE SUPABASE N'EST PAS ENCORE EXÉCUTÉE */}
+      {isTableMissing && (
+        <div 
+          className="p-4 mb-6 rounded-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4"
+          style={{ backgroundColor: 'rgba(245, 158, 11, 0.12)', border: '1px solid rgba(245, 158, 11, 0.35)', color: '#f8fafc' }}
+        >
+          <div className="flex items-start gap-3">
+            <AlertTriangle size={24} color="#f59e0b" style={{ flexShrink: 0, marginTop: '2px' }} />
+            <div>
+              <strong style={{ color: '#f59e0b', fontSize: '0.95rem' }}>Activation de la base Supabase requise :</strong>
+              <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: '#cbd5e1' }}>
+                Pour activer la synchronisation permanente en ligne, exécutez le script SQL dans votre console Supabase (SQL Editor).
+              </p>
+            </div>
+          </div>
+          <Button 
+            variant="secondary"
+            onClick={copySqlScript}
+            style={{ backgroundColor: '#f59e0b', color: '#000', fontWeight: 700, borderColor: '#f59e0b', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+          >
+            <Copy size={16} /> Copier le Script SQL (1-clic)
+          </Button>
+        </div>
+      )}
 
       {/* STATS RAPIDES */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">

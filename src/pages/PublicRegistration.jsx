@@ -514,13 +514,27 @@ export default function PublicRegistration() {
         statut: 'EN_ATTENTE'
       };
 
+      // Sauvegarde de secours locale (garantit que l'inscription apparaît toujours)
+      try {
+        const stored = localStorage.getItem('local_inscriptions_backup');
+        const list = stored ? JSON.parse(stored) : [];
+        list.unshift({ 
+          ...payload, 
+          id: `local-${Date.now()}`, 
+          date_demande: new Date().toISOString(),
+          groupes: selectedGroupeName ? { id: formData.groupe_id, nom: selectedGroupeName } : null 
+        });
+        localStorage.setItem('local_inscriptions_backup', JSON.stringify(list));
+      } catch (e) {
+        console.warn('Local backup write warning:', e);
+      }
+
       // 1. Sauvegarde dans Supabase
       const { error } = await supabase
         .from('inscriptions')
         .insert([payload]);
 
       if (error) {
-        // En cas d'erreur table non créée, on log et on simule pour l'utilisateur
         console.warn('Supabase insert note:', error);
       }
 

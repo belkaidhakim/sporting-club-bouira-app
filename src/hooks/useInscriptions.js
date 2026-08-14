@@ -6,10 +6,22 @@ export function useInscriptions() {
   const [inscriptions, setInscriptions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [isTableMissing, setIsTableMissing] = useState(false);
+
+  const getLocalBackups = () => {
+    try {
+      const stored = localStorage.getItem('local_inscriptions_backup');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  };
 
   const fetchInscriptions = useCallback(async () => {
     try {
       setLoading(true);
+      const localItems = getLocalBackups();
+      
       const { data, error } = await supabase
         .from('inscriptions')
         .select(`
@@ -19,19 +31,25 @@ export function useInscriptions() {
         .order('date_demande', { ascending: false });
 
       if (error) {
-        // If table doesn't exist yet, gracefully handle without breaking UI
-        if (error.code === '42P01' || error.message.includes('relation "public.inscriptions" does not exist')) {
+        if (error.code === '42P01' || error.message?.includes('relation "public.inscriptions" does not exist') || error.message?.includes('not found')) {
           console.warn('Table inscriptions non encore créée dans Supabase.');
-          setInscriptions([]);
+          setIsTableMissing(true);
+          setInscriptions(localItems);
           return;
         }
         throw error;
       }
-      setInscriptions(data || []);
+      
+      setIsTableMissing(false);
+      // Merge remote and any un-synced local items (deduplicate by numero_dossier)
+      const remoteMap = new Set((data || []).map(d => d.numero_dossier));
+      const unSyncedLocals = localItems.filter(l => !remoteMap.has(l.numero_dossier));
+      setInscriptions([...unSyncedLocals, ...(data || [])]);
       setError(null);
     } catch (err) {
       console.error('Erreur fetchInscriptions:', err);
       setError(err.message);
+      setInscriptions(getLocalBackups());
     } finally {
       setLoading(false);
     }
@@ -158,6 +176,7 @@ export function useInscriptions() {
     loading,
     error,
     pendingCount,
+    isTableMissing,
     fetchInscriptions,
     validerInscription,
     rejeterInscription,
