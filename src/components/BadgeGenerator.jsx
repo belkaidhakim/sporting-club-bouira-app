@@ -69,9 +69,10 @@ export default function BadgeGenerator({ athlete, showEndDate = false }) {
             }} 
           />
           <div>
-            <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, letterSpacing: '0.04em', color: '#ffffff', lineHeight: 1.1 }}>
-              SPORTING CLUB BOUIRA
+            <h2 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, letterSpacing: '0.04em', color: '#ffffff', lineHeight: 1.1 }}>
+              CSA SPORTING BOUIRA
             </h2>
+            <div style={{ fontSize: '0.65rem', color: 'var(--accent-success)', fontWeight: 600 }}>Club Amateur Sportif</div>
           </div>
         </div>
         <div style={{ 

@@ -478,11 +478,11 @@ export default function FinancialDashboard() {
       const athleteBirth = cotisation.athletes?.date_naissance ? new Date(cotisation.athletes.date_naissance).toLocaleDateString('fr-FR') : 'Non renseignée';
       const athleteToken = cotisation.athletes?.token_qr ? cotisation.athletes.token_qr.substring(0, 14) : `SCB-${cotisation.athlete_id ? cotisation.athlete_id.substring(0, 8).toUpperCase() : 'MEMBRE'}`;
 
-      // 1. BANDEAU COULEURS SUPÉRIEUR
-      doc.setFillColor(15, 23, 42); // Navy
+      // 1. BANDEAU COULEURS SUPÉRIEUR (BLEU ET VERT)
+      doc.setFillColor(30, 64, 175); // Bleu Royal
       doc.rect(0, 0, 210, 5, 'F');
-      doc.setFillColor(245, 158, 11); // Gold accent
-      doc.rect(0, 5, 210, 1.5, 'F');
+      doc.setFillColor(16, 185, 129); // Vert Émeraude
+      doc.rect(0, 5, 210, 2, 'F');
 
       // 2. EN-TÊTE DU CLUB & LOGO
       let headerTextX = 18;
@@ -495,15 +495,15 @@ export default function FinancialDashboard() {
         }
       }
 
-      // Nom & sous-titre du club
+      // Nom & sous-titre officiel du club
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(16);
-      doc.setTextColor(15, 23, 42);
-      doc.text('SPORTING CLUB BOUIRA', headerTextX, 19);
+      doc.setFontSize(14.5);
+      doc.setTextColor(30, 64, 175); // Bleu
+      doc.text('CLUB AMATEUR SPORTIF SPORTING BOUIRA', headerTextX, 19);
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8.5);
-      doc.setTextColor(79, 70, 229);
+      doc.setTextColor(16, 185, 129); // Vert
       doc.text('ASSOCIATION SPORTIVE & D\'ATHLÉTISME DE BOUIRA', headerTextX, 24);
 
       doc.setFont('helvetica', 'normal');
@@ -515,18 +515,18 @@ export default function FinancialDashboard() {
       // Boîte Badge Numéro de reçu (en haut à droite)
       doc.setFillColor(248, 250, 252);
       doc.roundedRect(138, 11, 54, 24, 3, 3, 'F');
-      doc.setDrawColor(203, 213, 225);
+      doc.setDrawColor(30, 64, 175);
       doc.setLineWidth(0.4);
       doc.roundedRect(138, 11, 54, 24, 3, 3, 'S');
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8.5);
-      doc.setTextColor(15, 23, 42);
+      doc.setTextColor(30, 64, 175);
       doc.text('REÇU DE PAIEMENT', 165, 17, { align: 'center' });
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8);
-      doc.setTextColor(79, 70, 229);
+      doc.setTextColor(16, 185, 129);
       doc.text(receiptNumber, 165, 23, { align: 'center' });
 
       doc.setFont('helvetica', 'normal');
@@ -550,7 +550,7 @@ export default function FinancialDashboard() {
       doc.roundedRect(18, 45, 174, 8, 3, 3, 'F');
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8);
-      doc.setTextColor(79, 70, 229);
+      doc.setTextColor(30, 64, 175);
       doc.text("INFORMATIONS DU MEMBRE ADHÉRENT", 24, 50.5);
 
       // Colonne Gauche
@@ -597,12 +597,12 @@ export default function FinancialDashboard() {
       doc.text("ID BADGE :", 115, 75);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
-      doc.setTextColor(79, 70, 229);
+      doc.setTextColor(30, 64, 175);
       doc.text(athleteToken, 142, 75);
 
       // 4. SECTION 2 : DÉTAILS DU PAIEMENT & PRESTATION
       // En-tête tableau
-      doc.setFillColor(15, 23, 42);
+      doc.setFillColor(30, 64, 175); // Bleu Royal
       doc.roundedRect(18, 90, 174, 9, 2, 2, 'F');
 
       doc.setFont('helvetica', 'bold');
@@ -645,7 +645,7 @@ export default function FinancialDashboard() {
       // Montant
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(11);
-      doc.setTextColor(16, 185, 129);
+      doc.setTextColor(16, 185, 129); // Vert
       doc.text(formatDZ(cotisation.montant_paye), 186, 111, { align: 'right' });
 
       // Bloc Total & Validation verte
@@ -686,7 +686,7 @@ export default function FinancialDashboard() {
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7.5);
-      doc.setTextColor(79, 70, 229);
+      doc.setTextColor(30, 64, 175);
       doc.text("CONDITIONS D'ACCÈS & RÈGLEMENT INTÉRIEUR", 24, 165);
 
       doc.setFont('helvetica', 'normal');
@@ -725,8 +725,8 @@ export default function FinancialDashboard() {
       doc.text("Cachet & Signature de l'Administration :", 116, 195);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7.5);
-      doc.setTextColor(79, 70, 229);
-      doc.text("SPORTING CLUB BOUIRA", 116, 200);
+      doc.setTextColor(30, 64, 175);
+      doc.text("CLUB AMATEUR SPORTIF SPORTING BOUIRA", 116, 200);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(6.8);
       doc.setTextColor(148, 163, 184);
@@ -740,11 +740,13 @@ export default function FinancialDashboard() {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7);
       doc.setTextColor(148, 163, 184);
-      doc.text(`Sporting Club Bouira · Document officiel informatisé généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`, 105, 275, { align: 'center' });
+      doc.text(`Club Amateur Sportif Sporting Bouira · Document officiel informatisé généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`, 105, 275, { align: 'center' });
       doc.text("Ce reçu ne peut être ni raturé ni modifié sans autorisation préalable de la direction.", 105, 279, { align: 'center' });
 
-      // Bandeau inférieur
-      doc.setFillColor(15, 23, 42);
+      // Bandeau inférieur (Bleu et Vert)
+      doc.setFillColor(16, 185, 129); // Vert
+      doc.rect(0, 290, 210, 2, 'F');
+      doc.setFillColor(30, 64, 175); // Bleu
       doc.rect(0, 292, 210, 5, 'F');
 
       // Sauvegarde du fichier PDF
