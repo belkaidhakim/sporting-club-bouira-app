@@ -14,7 +14,7 @@ export function useCotisations() {
         .from('cotisations')
         .select(`
           *,
-          athletes(nom, prenom, groupe)
+          athletes(id, nom, prenom, groupe, telephone, date_naissance, token_qr, groupes(nom))
         `)
         .order('date_paiement', { ascending: false });
 
