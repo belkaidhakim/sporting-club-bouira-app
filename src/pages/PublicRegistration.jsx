@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import jsPDF from 'jspdf';
 import toast from 'react-hot-toast';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { z } from 'zod';
 import { 
   User, 
@@ -19,19 +19,78 @@ import {
   AlertCircle,
   Users,
   ChevronRight,
-  Sparkles
+  Sparkles,
+  AlertTriangle
 } from 'lucide-react';
-import { Card, Button } from '../components/ui';
+import { Button } from '../components/ui';
 import { useGroupes } from '../hooks/useGroupes';
 
-// Schéma de validation Zod pour l'inscription publique
+// Masquage et formatage automatique du téléphone (ex: 05 50 12 34 56)
+const formatPhoneInput = (val = '') => {
+  const digits = val.replace(/\D/g, '').substring(0, 10);
+  const parts = [];
+  for (let i = 0; i < digits.length; i += 2) {
+    parts.push(digits.substring(i, i + 2));
+  }
+  return parts.join(' ');
+};
+
+const unformatPhone = (formatted = '') => {
+  return formatted.replace(/\s+/g, '');
+};
+
+// Compression d'image côté client (Canvas)
+const compressImageFile = (file, maxWidth = 1000, maxHeight = 1200, quality = 0.75) => {
+  return new Promise((resolve) => {
+    if (!file.type.startsWith('image/')) {
+      // S'il s'agit d'un PDF, lire directement en Data URL
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target.result);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        resolve(dataUrl);
+      };
+      img.onerror = () => resolve(null);
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+};
+
+// Schéma de validation Zod
 const registrationSchema = z.object({
-  nom: z.string().min(2, 'Le nom doit comporter au moins 2 caractères'),
-  prenom: z.string().min(2, 'Le prénom doit comporter au moins 2 caractères'),
+  nom: z.string().trim().min(2, 'Le nom doit comporter au moins 2 caractères'),
+  prenom: z.string().trim().min(2, 'Le prénom doit comporter au moins 2 caractères'),
   date_naissance: z.string().min(1, 'La date de naissance est obligatoire'),
   sexe: z.enum(['Homme', 'Femme'], { errorMap: () => ({ message: 'Veuillez sélectionner le sexe' }) }),
   adresse: z.string().optional(),
-  telephone: z.string().regex(/^(0)[5-7][0-9]{8}$/, 'Numéro de téléphone invalide (ex: 0550123456)'),
+  telephone: z.string().regex(/^(0)[5-7][0-9]{8}$/, 'Numéro invalide (doit comporter 10 chiffres, ex: 05 50 12 34 56)'),
   telephone_parent: z.string().optional(),
   groupe_id: z.string().optional(),
   observations_medicales: z.string().optional(),
@@ -60,7 +119,10 @@ export default function PublicRegistration() {
     consentement_loi_18_07: false
   });
 
-  // Upload Previews (Base64)
+  // Erreurs de validation en temps réel
+  const [errors, setErrors] = useState({});
+
+  // Fichiers Base64 compressés
   const [photoBase64, setPhotoBase64] = useState(null);
   const [certificatBase64, setCertificatBase64] = useState(null);
   const [certificatFileName, setCertificatFileName] = useState('');
@@ -80,76 +142,68 @@ export default function PublicRegistration() {
     return age < 18;
   };
 
+  // Calcul de l'âge dynamique
+  const athleteAge = () => {
+    if (!formData.date_naissance) return null;
+    const birth = new Date(formData.date_naissance);
+    if (isNaN(birth.getTime())) return null;
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+    return age >= 0 ? age : null;
+  };
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
+    let newValue = type === 'checkbox' ? checked : value;
+
+    // Masquage automatique pour les téléphones
+    if (name === 'telephone' || name === 'telephone_parent') {
+      newValue = formatPhoneInput(value);
+    }
+
     setFormData(prev => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value
+      [name]: newValue
     }));
+
+    // Effacer l'erreur en direct lors de la saisie
+    if (errors[name]) {
+      setErrors(prev => ({ ...prev, [name]: null }));
+    }
   };
 
-  // Traitement et compression de la photo
-  const handlePhotoUpload = (e) => {
+  // Upload Photo avec compression
+  const handlePhotoUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 320;
-        const MAX_HEIGHT = 400;
-        let width = img.width;
-        let height = img.height;
-
-        if (width > height) {
-          if (width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width;
-            width = MAX_WIDTH;
-          }
-        } else {
-          if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height;
-            height = MAX_HEIGHT;
-          }
-        }
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-        setPhotoBase64(dataUrl);
-      };
-      img.src = event.target.result;
-    };
-    reader.readAsDataURL(file);
+    const compressed = await compressImageFile(file, 400, 500, 0.8);
+    if (compressed) {
+      setPhotoBase64(compressed);
+    }
   };
 
-  // Traitement du certificat médical
-  const handleCertificatUpload = (e) => {
+  // Upload Certificat Médical avec compression
+  const handleCertificatUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     setCertificatFileName(file.name);
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setCertificatBase64(event.target.result);
-    };
-    reader.readAsDataURL(file);
+    const compressed = await compressImageFile(file, 1200, 1600, 0.75);
+    if (compressed) {
+      setCertificatBase64(compressed);
+    }
   };
 
-  // Traitement de l'autorisation parentale
-  const handleAutorisationUpload = (e) => {
+  // Upload Autorisation Parentale avec compression
+  const handleAutorisationUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     setAutorisationFileName(file.name);
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setAutorisationBase64(event.target.result);
-    };
-    reader.readAsDataURL(file);
+    const compressed = await compressImageFile(file, 1200, 1600, 0.75);
+    if (compressed) {
+      setAutorisationBase64(compressed);
+    }
   };
 
   // Chargement sécurisé du logo pour le PDF
@@ -379,8 +433,8 @@ export default function PublicRegistration() {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7.5);
       doc.setTextColor(30, 41, 59);
-      doc.text(`• Certificat Médical : ${certificatBase64 ? 'Fourni (En attente de validation)' : 'Non fourni en ligne (À déposer au club)'}`, 24, 136);
-      doc.text(`• Autorisation Parentale : ${isMinor() ? (autorisationBase64 ? 'Fournie en ligne' : 'Requise (À fournir au secrétariat)') : 'Non requise (Adhérent majeur)'}`, 24, 141);
+      doc.text(`• Certificat Médical : ${certificatBase64 ? 'Fourni en ligne' : 'Non fourni (À déposer au club)'}`, 24, 136);
+      doc.text(`• Autorisation Parentale : ${isMinor() ? (autorisationBase64 ? 'Fournie en ligne' : 'Requise (À fournir au secrétariat)') : 'Non requise (Majeur)'}`, 24, 141);
       doc.text(`• Remarques / Allergies : ${data.observations_medicales || 'Aucune observation médicale particulière signalée.'}`, 24, 146);
 
       // SECTION 4 : CONFORMITÉ LOI 18-07 & RÈGLEMENT
@@ -473,16 +527,35 @@ export default function PublicRegistration() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    // 1. Validation Zod avec gestion d'erreurs champ par champ
+    const rawPhone = unformatPhone(formData.telephone);
+    const rawParentPhone = unformatPhone(formData.telephone_parent);
+
+    const validationPayload = {
+      ...formData,
+      telephone: rawPhone,
+      telephone_parent: rawParentPhone
+    };
+
     try {
-      registrationSchema.parse(formData);
+      registrationSchema.parse(validationPayload);
+      setErrors({});
     } catch (err) {
       if (err instanceof z.ZodError) {
-        toast.error(err.errors[0].message);
+        const fieldErrors = {};
+        err.errors.forEach(e => {
+          if (e.path[0]) {
+            fieldErrors[e.path[0]] = e.message;
+          }
+        });
+        setErrors(fieldErrors);
+        toast.error('Veuillez corriger les champs obligatoires signalés en rouge.');
         return;
       }
     }
 
-    if (isMinor() && !formData.telephone_parent) {
+    if (isMinor() && !rawParentPhone) {
+      setErrors(prev => ({ ...prev, telephone_parent: "Le numéro d'un parent/tuteur est requis pour un athlète mineur." }));
       toast.error("Le numéro de téléphone d'un parent/tuteur est requis pour un athlète mineur.");
       return;
     }
@@ -501,8 +574,8 @@ export default function PublicRegistration() {
         date_naissance: formData.date_naissance,
         sexe: formData.sexe,
         adresse: formData.adresse ? formData.adresse.trim() : null,
-        telephone: formData.telephone.trim(),
-        telephone_parent: formData.telephone_parent ? formData.telephone_parent.trim() : null,
+        telephone: rawPhone,
+        telephone_parent: rawParentPhone || null,
         groupe_id: formData.groupe_id || null,
         groupe_nom: selectedGroupeName,
         observations_medicales: formData.observations_medicales ? formData.observations_medicales.trim() : null,
@@ -514,7 +587,7 @@ export default function PublicRegistration() {
         statut: 'EN_ATTENTE'
       };
 
-      // Sauvegarde de secours locale (garantit que l'inscription apparaît toujours)
+      // 1. Sauvegarde locale de secours (garantit que l'inscription apparaît toujours)
       try {
         const stored = localStorage.getItem('local_inscriptions_backup');
         const list = stored ? JSON.parse(stored) : [];
@@ -529,7 +602,7 @@ export default function PublicRegistration() {
         console.warn('Local backup write warning:', e);
       }
 
-      // 1. Sauvegarde dans Supabase
+      // 2. Sauvegarde dans Supabase
       const { error } = await supabase
         .from('inscriptions')
         .insert([payload]);
@@ -538,15 +611,15 @@ export default function PublicRegistration() {
         console.warn('Supabase insert note:', error);
       }
 
-      // 2. Génération et téléchargement automatique de la Fiche PDF
-      await generateRegistrationPDF(formData, numeroDossier);
+      // 3. Génération et téléchargement automatique de la Fiche PDF
+      await generateRegistrationPDF(validationPayload, numeroDossier);
 
       toast.dismiss(toastId);
       toast.success('Pré-inscription réussie ! Votre fiche PDF a été téléchargée.');
 
       setSubmissionResult({
         numeroDossier,
-        data: formData
+        data: validationPayload
       });
       setSubmitted(true);
     } catch (err) {
@@ -561,37 +634,66 @@ export default function PublicRegistration() {
   return (
     <div style={{
       minHeight: '100vh',
-      backgroundColor: 'var(--bg-primary, #090d16)',
-      color: 'var(--text-primary, #f8fafc)',
-      padding: '2rem 1rem',
-      fontFamily: 'Inter, system-ui, sans-serif'
+      backgroundColor: '#f1f5f9', // Fond clair doux et propre
+      color: '#0f172a',
+      padding: '2.5rem 1rem',
+      fontFamily: "'Inter', system-ui, -apple-system, sans-serif"
     }}>
-      <div style={{ maxWidth: '840px', margin: '0 auto' }}>
+      <div style={{ maxWidth: '860px', margin: '0 auto' }}>
         
-        {/* EN-TÊTE OFFICIEL DU CLUB */}
+        {/* 1. EN-TÊTE DU CLUB AVEC HAUT CONTRASTE BLEU MARINE */}
         <div className="text-center mb-8">
           <div style={{ 
             display: 'inline-flex', 
             alignItems: 'center', 
             justifyContent: 'center', 
-            width: '74px', 
-            height: '74px', 
+            width: '80px', 
+            height: '80px', 
             borderRadius: '50%', 
             overflow: 'hidden', 
-            border: '3px solid var(--accent-primary, #6366f1)',
-            boxShadow: '0 0 25px rgba(99, 102, 241, 0.3)',
-            marginBottom: '1rem'
+            border: '3px solid #0f172a',
+            boxShadow: '0 8px 25px rgba(15, 23, 42, 0.15)',
+            marginBottom: '1rem',
+            backgroundColor: '#ffffff'
           }}>
             <img src="/logo.jpg" alt="Logo Sporting Club Bouira" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           </div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 800, margin: '0 0 0.3rem', letterSpacing: '-0.02em', color: '#fff' }}>
+
+          <h1 style={{ 
+            fontSize: '2rem', 
+            fontWeight: 900, 
+            margin: '0 0 0.25rem', 
+            letterSpacing: '-0.03em', 
+            color: '#0f172a' // BLEU MARINE FONCÉ - LISIBILITÉ PARFAITE
+          }}>
             SPORTING CLUB BOUIRA
           </h1>
-          <p style={{ fontSize: '0.9rem', color: 'var(--accent-secondary, #10b981)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 0.5rem' }}>
+
+          <p style={{ 
+            fontSize: '0.95rem', 
+            color: '#059669', // VERT EMERAUDE CLUB
+            fontWeight: 800, 
+            textTransform: 'uppercase', 
+            letterSpacing: '0.08em', 
+            margin: '0 0 0.75rem' 
+          }}>
             Club Amateur Sportif Sporting Bouira
           </p>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 14px', borderRadius: '20px', backgroundColor: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.25)', fontSize: '0.8rem', color: '#cbd5e1' }}>
-            <Sparkles size={14} color="#818cf8" />
+
+          <div style={{ 
+            display: 'inline-flex', 
+            alignItems: 'center', 
+            gap: '8px', 
+            padding: '6px 16px', 
+            borderRadius: '24px', 
+            backgroundColor: '#ffffff', 
+            border: '1px solid #e2e8f0', 
+            boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+            fontSize: '0.85rem', 
+            color: '#334155',
+            fontWeight: 600
+          }}>
+            <Sparkles size={16} color="#6366f1" />
             Portail Officiel d'Adhésion & Pré-inscription en ligne
           </div>
         </div>
@@ -599,42 +701,49 @@ export default function PublicRegistration() {
         {/* ÉCRAN DE CONFIRMATION SUCCÈS */}
         {submitted && submissionResult ? (
           <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}>
-            <Card className="p-8 text-center" style={{ border: '1px solid rgba(16, 185, 129, 0.3)', backgroundColor: 'rgba(15, 23, 42, 0.85)' }}>
-              <div style={{ width: '64px', height: '64px', borderRadius: '50%', backgroundColor: 'rgba(16, 185, 129, 0.15)', color: 'var(--accent-success, #10b981)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1.25rem' }}>
-                <CheckCircle2 size={36} />
+            <div style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '20px',
+              padding: '2.5rem 2rem',
+              boxShadow: '0 20px 40px -15px rgba(0,0,0,0.08), 0 0 1px 1px rgba(0,0,0,0.05)',
+              border: '1px solid #e2e8f0',
+              textAlign: 'center'
+            }}>
+              <div style={{ width: '68px', height: '68px', borderRadius: '50%', backgroundColor: '#ecfdf5', color: '#10b981', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1.25rem' }}>
+                <CheckCircle2 size={40} />
               </div>
-              <h2 style={{ fontSize: '1.5rem', fontWeight: 700, margin: '0 0 0.5rem', color: '#fff' }}>
-                Demande de Pré-Inscription Déposée !
+              <h2 style={{ fontSize: '1.6rem', fontWeight: 800, margin: '0 0 0.5rem', color: '#0f172a' }}>
+                Demande de Pré-Inscription Transmise !
               </h2>
-              <p style={{ color: 'var(--text-muted, #94a3b8)', fontSize: '0.95rem', maxWidth: '600px', margin: '0 auto 1.5rem' }}>
-                Votre dossier a été transmis avec succès à l'administration du club. Votre fiche officielle a été téléchargée sur votre appareil.
+              <p style={{ color: '#64748b', fontSize: '0.95rem', maxWidth: '580px', margin: '0 auto 1.5rem', lineHeight: '1.5' }}>
+                Votre dossier a été enregistré avec succès par le <strong>Sporting Club Bouira</strong>. Votre fiche officielle au format PDF a été générée et téléchargée sur votre appareil.
               </p>
 
-              <div style={{ display: 'inline-block', padding: '12px 24px', borderRadius: '12px', backgroundColor: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.25)', marginBottom: '2rem' }}>
-                <span style={{ fontSize: '0.8rem', textTransform: 'uppercase', color: 'var(--text-muted, #94a3b8)', letterSpacing: '0.05em' }}>Numéro de Dossier</span>
-                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--accent-success, #10b981)' }}>
+              <div style={{ display: 'inline-block', padding: '14px 28px', borderRadius: '14px', backgroundColor: '#f8fafc', border: '1.5px solid #e2e8f0', marginBottom: '2rem' }}>
+                <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#64748b', letterSpacing: '0.08em', fontWeight: 700, display: 'block' }}>Numéro de Dossier Officiel</span>
+                <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#059669', letterSpacing: '0.02em', margin: '2px 0' }}>
                   {submissionResult.numeroDossier}
                 </div>
-                <span style={{ fontSize: '0.75rem', color: '#cbd5e1' }}>Statut : <strong>EN ATTENTE DE VALIDATION</strong></span>
+                <span style={{ fontSize: '0.8rem', color: '#334155', fontWeight: 600 }}>Statut : <strong>EN ATTENTE DE VALIDATION</strong></span>
               </div>
 
               {/* Instructions pour la suite */}
-              <div style={{ textAlign: 'left', backgroundColor: 'rgba(30, 41, 59, 0.5)', padding: '1.25rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)', marginBottom: '2rem' }}>
-                <h4 style={{ margin: '0 0 0.75rem', fontSize: '0.95rem', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ textAlign: 'left', backgroundColor: '#f8fafc', padding: '1.5rem', borderRadius: '14px', border: '1px solid #e2e8f0', marginBottom: '2rem' }}>
+                <h4 style={{ margin: '0 0 0.75rem', fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <AlertCircle size={18} color="#6366f1" /> Prochaines étapes :
                 </h4>
-                <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.85rem', color: '#cbd5e1', lineHeight: '1.6' }}>
-                  <li>Imprimez ou conservez votre fiche PDF sur votre téléphone.</li>
-                  <li>Présentez-vous au secrétariat du <strong>Sporting Club Bouira</strong> pour finaliser votre dossier et régler votre cotisation.</li>
-                  <li>Une fois validé, vous recevrez votre <strong>Badge QR Code officiel</strong> pour accéder aux entraînements.</li>
+                <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.88rem', color: '#475569', lineHeight: '1.7' }}>
+                  <li>Conservez ou imprimez votre fiche PDF de pré-inscription.</li>
+                  <li>Présentez-vous au secrétariat du <strong>Sporting Club Bouira</strong> pour régler votre cotisation et finaliser votre adhésion.</li>
+                  <li>Une fois validé, votre <strong>Badge QR Code officiel</strong> sera activé pour vos accès aux entraînements.</li>
                 </ul>
               </div>
 
-              <div className="flex flex-wrap justify-center gap-4">
+              <div className="flex flex-wrap justify-center gap-3">
                 <Button 
                   variant="primary" 
                   onClick={() => generateRegistrationPDF(submissionResult.data, submissionResult.numeroDossier)}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+                  style={{ padding: '0.75rem 1.5rem', fontSize: '0.9rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '8px', backgroundColor: '#0f172a', color: '#fff' }}
                 >
                   <Download size={16} /> Télécharger à nouveau ma fiche PDF
                 </Button>
@@ -658,125 +767,235 @@ export default function PublicRegistration() {
                     setPhotoBase64(null);
                     setCertificatBase64(null);
                     setAutorisationBase64(null);
+                    setErrors({});
                   }}
+                  style={{ padding: '0.75rem 1.5rem', fontSize: '0.9rem' }}
                 >
-                  Nouvelle inscription
+                  Effectuer une autre inscription
                 </Button>
               </div>
-            </Card>
+            </div>
           </motion.div>
         ) : (
-          /* FORMULAIRE D'INSCRIPTION */
+          /* FORMULAIRE D'INSCRIPTION SUR FOND BLANC AÉRÉ & MODERNE */
           <motion.form 
             onSubmit={handleSubmit}
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
           >
-            <Card className="p-6 md:p-8" style={{ border: '1px solid rgba(255, 255, 255, 0.1)', backgroundColor: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(16px)' }}>
+            <div style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '20px',
+              padding: '2.5rem',
+              boxShadow: '0 20px 40px -15px rgba(0,0,0,0.06), 0 0 1px 1px rgba(0,0,0,0.04)',
+              border: '1px solid #e2e8f0'
+            }}>
               
               {/* SECTION 1 : INFORMATIONS PERSONNELLES */}
               <div className="mb-8">
-                <div className="flex items-center gap-2 mb-4 pb-2 border-b border-[rgba(255,255,255,0.08)]">
-                  <div style={{ padding: '6px', borderRadius: '8px', backgroundColor: 'rgba(99, 102, 241, 0.15)', color: '#818cf8' }}>
-                    <User size={18} />
+                <div className="flex items-center gap-3 mb-6 pb-3 border-b border-[#e2e8f0]">
+                  <div style={{ padding: '8px', borderRadius: '10px', backgroundColor: '#eef2ff', color: '#6366f1' }}>
+                    <User size={20} />
                   </div>
-                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#f8fafc' }}>
-                    1. Informations Personnelles
-                  </h3>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0f172a' }}>
+                      1. Informations Personnelles
+                    </h3>
+                    <span style={{ fontSize: '0.78rem', color: '#64748b' }}>Renseignez l'identité exacte de l'adhérent</span>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {/* Nom */}
                   <div>
-                    <label className="form-label" style={{ fontSize: '0.85rem', fontWeight: 600, color: '#cbd5e1' }}>Nom *</label>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                      Nom de famille <span className="text-red-500">*</span>
+                    </label>
                     <input 
                       type="text" 
                       name="nom" 
                       value={formData.nom} 
                       onChange={handleChange} 
                       placeholder="ex: BENALI" 
-                      required 
-                      className="form-input" 
+                      style={{
+                        width: '100%',
+                        padding: '0.7rem 0.9rem',
+                        borderRadius: '8px',
+                        border: errors.nom ? '1.5px solid #ef4444' : '1.5px solid #cbd5e1',
+                        backgroundColor: errors.nom ? '#fef2f2' : '#ffffff',
+                        color: '#0f172a',
+                        fontSize: '0.9rem',
+                        outline: 'none',
+                        transition: 'border-color 0.2s'
+                      }}
                     />
+                    {errors.nom && (
+                      <span className="text-red-500 text-xs font-semibold mt-1 block">{errors.nom}</span>
+                    )}
                   </div>
 
+                  {/* Prénom */}
                   <div>
-                    <label className="form-label" style={{ fontSize: '0.85rem', fontWeight: 600, color: '#cbd5e1' }}>Prénom *</label>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                      Prénom <span className="text-red-500">*</span>
+                    </label>
                     <input 
                       type="text" 
                       name="prenom" 
                       value={formData.prenom} 
                       onChange={handleChange} 
                       placeholder="ex: Mohamed" 
-                      required 
-                      className="form-input" 
+                      style={{
+                        width: '100%',
+                        padding: '0.7rem 0.9rem',
+                        borderRadius: '8px',
+                        border: errors.prenom ? '1.5px solid #ef4444' : '1.5px solid #cbd5e1',
+                        backgroundColor: errors.prenom ? '#fef2f2' : '#ffffff',
+                        color: '#0f172a',
+                        fontSize: '0.9rem',
+                        outline: 'none'
+                      }}
                     />
+                    {errors.prenom && (
+                      <span className="text-red-500 text-xs font-semibold mt-1 block">{errors.prenom}</span>
+                    )}
                   </div>
 
+                  {/* Date de Naissance */}
                   <div>
-                    <label className="form-label" style={{ fontSize: '0.85rem', fontWeight: 600, color: '#cbd5e1' }}>Date de Naissance *</label>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5 flex justify-between">
+                      <span>Date de Naissance <span className="text-red-500">*</span></span>
+                      {athleteAge() !== null && (
+                        <span style={{ color: '#059669', fontWeight: 800, textTransform: 'none' }}>
+                          Âge : {athleteAge()} ans {isMinor() ? '(Mineur)' : '(Majeur)'}
+                        </span>
+                      )}
+                    </label>
                     <input 
                       type="date" 
                       name="date_naissance" 
                       value={formData.date_naissance} 
                       onChange={handleChange} 
-                      required 
-                      className="form-input" 
+                      style={{
+                        width: '100%',
+                        padding: '0.7rem 0.9rem',
+                        borderRadius: '8px',
+                        border: errors.date_naissance ? '1.5px solid #ef4444' : '1.5px solid #cbd5e1',
+                        backgroundColor: errors.date_naissance ? '#fef2f2' : '#ffffff',
+                        color: '#0f172a',
+                        fontSize: '0.9rem',
+                        outline: 'none'
+                      }}
                     />
+                    {errors.date_naissance && (
+                      <span className="text-red-500 text-xs font-semibold mt-1 block">{errors.date_naissance}</span>
+                    )}
                   </div>
 
+                  {/* Sexe */}
                   <div>
-                    <label className="form-label" style={{ fontSize: '0.85rem', fontWeight: 600, color: '#cbd5e1' }}>Sexe *</label>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                      Sexe <span className="text-red-500">*</span>
+                    </label>
                     <select 
                       name="sexe" 
                       value={formData.sexe} 
                       onChange={handleChange} 
-                      className="form-select"
+                      style={{
+                        width: '100%',
+                        padding: '0.7rem 0.9rem',
+                        borderRadius: '8px',
+                        border: '1.5px solid #cbd5e1',
+                        backgroundColor: '#ffffff',
+                        color: '#0f172a',
+                        fontSize: '0.9rem',
+                        outline: 'none'
+                      }}
                     >
                       <option value="Homme">Homme</option>
                       <option value="Femme">Femme</option>
                     </select>
                   </div>
 
+                  {/* Téléphone Adhérent avec Masquage */}
                   <div>
-                    <label className="form-label" style={{ fontSize: '0.85rem', fontWeight: 600, color: '#cbd5e1' }}>Numéro de Téléphone *</label>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                      Numéro de Téléphone <span className="text-red-500">*</span>
+                    </label>
                     <input 
                       type="tel" 
                       name="telephone" 
                       value={formData.telephone} 
                       onChange={handleChange} 
-                      placeholder="ex: 0550123456" 
-                      required 
-                      className="form-input" 
+                      placeholder="05 50 12 34 56" 
+                      style={{
+                        width: '100%',
+                        padding: '0.7rem 0.9rem',
+                        borderRadius: '8px',
+                        border: errors.telephone ? '1.5px solid #ef4444' : '1.5px solid #cbd5e1',
+                        backgroundColor: errors.telephone ? '#fef2f2' : '#ffffff',
+                        color: '#0f172a',
+                        fontSize: '0.9rem',
+                        outline: 'none',
+                        letterSpacing: '0.04em',
+                        fontWeight: 600
+                      }}
                     />
+                    {errors.telephone ? (
+                      <span className="text-red-500 text-xs font-semibold mt-1 block">{errors.telephone}</span>
+                    ) : (
+                      <span className="text-slate-400 text-xs mt-1 block">Format : 10 chiffres (ex: 05 50 12 34 56)</span>
+                    )}
                   </div>
 
+                  {/* Téléphone Parent / Tuteur */}
                   <div>
-                    <label className="form-label" style={{ fontSize: '0.85rem', fontWeight: 600, color: '#cbd5e1' }}>
-                      Téléphone Parent / Tuteur {isMinor() ? '*' : '(Optionnel)'}
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                      Téléphone Parent / Tuteur {isMinor() ? <span className="text-red-500">* (Obligatoire)</span> : '(Optionnel)'}
                     </label>
                     <input 
                       type="tel" 
                       name="telephone_parent" 
                       value={formData.telephone_parent} 
                       onChange={handleChange} 
-                      placeholder="ex: 0660123456" 
-                      required={isMinor()}
-                      className="form-input" 
+                      placeholder="06 60 12 34 56" 
+                      style={{
+                        width: '100%',
+                        padding: '0.7rem 0.9rem',
+                        borderRadius: '8px',
+                        border: errors.telephone_parent ? '1.5px solid #ef4444' : '1.5px solid #cbd5e1',
+                        backgroundColor: errors.telephone_parent ? '#fef2f2' : '#ffffff',
+                        color: '#0f172a',
+                        fontSize: '0.9rem',
+                        outline: 'none',
+                        letterSpacing: '0.04em',
+                        fontWeight: 600
+                      }}
                     />
-                    {isMinor() && (
-                      <span style={{ fontSize: '0.72rem', color: '#f59e0b', marginTop: '2px', display: 'block' }}>
-                        Obligatoire pour les athlètes mineurs (&lt; 18 ans).
-                      </span>
+                    {errors.telephone_parent && (
+                      <span className="text-red-500 text-xs font-semibold mt-1 block">{errors.telephone_parent}</span>
                     )}
                   </div>
 
+                  {/* Section / Groupe */}
                   <div className="md:col-span-2">
-                    <label className="form-label" style={{ fontSize: '0.85rem', fontWeight: 600, color: '#cbd5e1' }}>Section / Groupe Souhaité</label>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                      Section / Catégorie Sportive Souhaitée
+                    </label>
                     <select 
                       name="groupe_id" 
                       value={formData.groupe_id} 
                       onChange={handleChange} 
-                      className="form-select"
+                      style={{
+                        width: '100%',
+                        padding: '0.7rem 0.9rem',
+                        borderRadius: '8px',
+                        border: '1.5px solid #cbd5e1',
+                        backgroundColor: '#ffffff',
+                        color: '#0f172a',
+                        fontSize: '0.9rem',
+                        outline: 'none'
+                      }}
                     >
                       <option value="">Sélectionnez un groupe ou une discipline...</option>
                       {groupes.map(g => (
@@ -785,15 +1004,27 @@ export default function PublicRegistration() {
                     </select>
                   </div>
 
+                  {/* Adresse */}
                   <div className="md:col-span-2">
-                    <label className="form-label" style={{ fontSize: '0.85rem', fontWeight: 600, color: '#cbd5e1' }}>Adresse de Résidence</label>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                      Adresse de Résidence
+                    </label>
                     <input 
                       type="text" 
                       name="adresse" 
                       value={formData.adresse} 
                       onChange={handleChange} 
                       placeholder="ex: Cité 500 logements, Bouira" 
-                      className="form-input" 
+                      style={{
+                        width: '100%',
+                        padding: '0.7rem 0.9rem',
+                        borderRadius: '8px',
+                        border: '1.5px solid #cbd5e1',
+                        backgroundColor: '#ffffff',
+                        color: '#0f172a',
+                        fontSize: '0.9rem',
+                        outline: 'none'
+                      }}
                     />
                   </div>
                 </div>
@@ -801,27 +1032,30 @@ export default function PublicRegistration() {
 
               {/* SECTION 2 : TÉLÉCHARGEMENT DE DOCUMENTS */}
               <div className="mb-8">
-                <div className="flex items-center gap-2 mb-4 pb-2 border-b border-[rgba(255,255,255,0.08)]">
-                  <div style={{ padding: '6px', borderRadius: '8px', backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#10b981' }}>
-                    <UploadCloud size={18} />
+                <div className="flex items-center gap-3 mb-6 pb-3 border-b border-[#e2e8f0]">
+                  <div style={{ padding: '8px', borderRadius: '10px', backgroundColor: '#ecfdf5', color: '#059669' }}>
+                    <UploadCloud size={20} />
                   </div>
-                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#f8fafc' }}>
-                    2. Téléchargement des Documents & Photo
-                  </h3>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0f172a' }}>
+                      2. Téléchargement des Documents & Photo
+                    </h3>
+                    <span style={{ fontSize: '0.78rem', color: '#64748b' }}>Les images sont automatiquement optimisées avant l'envoi</span>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                   {/* Photo d'identité */}
-                  <div style={{ padding: '1rem', borderRadius: '12px', backgroundColor: 'rgba(30, 41, 59, 0.4)', border: '1px dashed rgba(255,255,255,0.15)', textAlign: 'center' }}>
-                    <Camera size={24} color="#818cf8" style={{ margin: '0 auto 8px' }} />
-                    <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#f8fafc', display: 'block', marginBottom: '4px' }}>
+                  <div style={{ padding: '1.25rem', borderRadius: '14px', backgroundColor: '#f8fafc', border: '1.5px dashed #cbd5e1', textAlign: 'center' }}>
+                    <Camera size={26} color="#6366f1" style={{ margin: '0 auto 8px' }} />
+                    <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a', display: 'block', marginBottom: '4px' }}>
                       Photo d'identité
                     </span>
-                    <span style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '10px' }}>
-                      Pour profil & badge QR officiel
+                    <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginBottom: '12px' }}>
+                      Pour le Badge QR officiel
                     </span>
                     {photoBase64 ? (
-                      <div style={{ position: 'relative', width: '80px', height: '100px', margin: '0 auto 8px', borderRadius: '8px', overflow: 'hidden', border: '2px solid #6366f1' }}>
+                      <div style={{ position: 'relative', width: '84px', height: '105px', margin: '0 auto 10px', borderRadius: '10px', overflow: 'hidden', border: '2px solid #6366f1', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
                         <img src={photoBase64} alt="Aperçu photo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                       </div>
                     ) : null}
@@ -834,23 +1068,23 @@ export default function PublicRegistration() {
                     />
                     <label 
                       htmlFor="photo-upload" 
-                      style={{ display: 'inline-block', padding: '6px 12px', fontSize: '0.75rem', borderRadius: '6px', backgroundColor: 'rgba(99, 102, 241, 0.2)', color: '#818cf8', cursor: 'pointer', fontWeight: 600 }}
+                      style={{ display: 'inline-block', padding: '7px 14px', fontSize: '0.78rem', borderRadius: '8px', backgroundColor: '#eef2ff', color: '#6366f1', cursor: 'pointer', fontWeight: 700, border: '1px solid #c7d2fe' }}
                     >
-                      {photoBase64 ? 'Changer' : 'Sélectionner'}
+                      {photoBase64 ? 'Changer la photo' : 'Sélectionner une photo'}
                     </label>
                   </div>
 
                   {/* Certificat Médical */}
-                  <div style={{ padding: '1rem', borderRadius: '12px', backgroundColor: 'rgba(30, 41, 59, 0.4)', border: '1px dashed rgba(255,255,255,0.15)', textAlign: 'center' }}>
-                    <HeartPulse size={24} color="#10b981" style={{ margin: '0 auto 8px' }} />
-                    <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#f8fafc', display: 'block', marginBottom: '4px' }}>
+                  <div style={{ padding: '1.25rem', borderRadius: '14px', backgroundColor: '#f8fafc', border: '1.5px dashed #cbd5e1', textAlign: 'center' }}>
+                    <HeartPulse size={26} color="#059669" style={{ margin: '0 auto 8px' }} />
+                    <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a', display: 'block', marginBottom: '4px' }}>
                       Certificat Médical
                     </span>
-                    <span style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '10px' }}>
-                      Aptitude à la pratique sportive
+                    <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginBottom: '12px' }}>
+                      Aptitude sportive (Photo ou scan)
                     </span>
                     {certificatFileName ? (
-                      <div style={{ fontSize: '0.75rem', color: '#10b981', marginBottom: '8px', wordBreak: 'break-all', fontWeight: 500 }}>
+                      <div style={{ fontSize: '0.78rem', color: '#059669', marginBottom: '10px', wordBreak: 'break-all', fontWeight: 700 }}>
                         ✔ {certificatFileName}
                       </div>
                     ) : null}
@@ -863,23 +1097,23 @@ export default function PublicRegistration() {
                     />
                     <label 
                       htmlFor="certificat-upload" 
-                      style={{ display: 'inline-block', padding: '6px 12px', fontSize: '0.75rem', borderRadius: '6px', backgroundColor: 'rgba(16, 185, 129, 0.2)', color: '#10b981', cursor: 'pointer', fontWeight: 600 }}
+                      style={{ display: 'inline-block', padding: '7px 14px', fontSize: '0.78rem', borderRadius: '8px', backgroundColor: '#ecfdf5', color: '#059669', cursor: 'pointer', fontWeight: 700, border: '1px solid #a7f3d0' }}
                     >
-                      {certificatBase64 ? 'Changer' : 'Importer'}
+                      {certificatBase64 ? 'Remplacer le fichier' : 'Importer le certificat'}
                     </label>
                   </div>
 
                   {/* Autorisation Parentale */}
-                  <div style={{ padding: '1rem', borderRadius: '12px', backgroundColor: 'rgba(30, 41, 59, 0.4)', border: '1px dashed rgba(255,255,255,0.15)', textAlign: 'center' }}>
-                    <ShieldCheck size={24} color="#f59e0b" style={{ margin: '0 auto 8px' }} />
-                    <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#f8fafc', display: 'block', marginBottom: '4px' }}>
+                  <div style={{ padding: '1.25rem', borderRadius: '14px', backgroundColor: '#f8fafc', border: '1.5px dashed #cbd5e1', textAlign: 'center' }}>
+                    <ShieldCheck size={26} color="#d97706" style={{ margin: '0 auto 8px' }} />
+                    <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a', display: 'block', marginBottom: '4px' }}>
                       Autorisation Parentale
                     </span>
-                    <span style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: '10px' }}>
-                      {isMinor() ? 'Obligatoire (Moins de 18 ans)' : 'Facultatif pour majeurs'}
+                    <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginBottom: '12px' }}>
+                      {isMinor() ? <strong style={{ color: '#d97706' }}>Obligatoire (Moins de 18 ans)</strong> : 'Non requise pour majeurs'}
                     </span>
                     {autorisationFileName ? (
-                      <div style={{ fontSize: '0.75rem', color: '#f59e0b', marginBottom: '8px', wordBreak: 'break-all', fontWeight: 500 }}>
+                      <div style={{ fontSize: '0.78rem', color: '#d97706', marginBottom: '10px', wordBreak: 'break-all', fontWeight: 700 }}>
                         ✔ {autorisationFileName}
                       </div>
                     ) : null}
@@ -892,29 +1126,43 @@ export default function PublicRegistration() {
                     />
                     <label 
                       htmlFor="autorisation-upload" 
-                      style={{ display: 'inline-block', padding: '6px 12px', fontSize: '0.75rem', borderRadius: '6px', backgroundColor: 'rgba(245, 158, 11, 0.2)', color: '#f59e0b', cursor: 'pointer', fontWeight: 600 }}
+                      style={{ display: 'inline-block', padding: '7px 14px', fontSize: '0.78rem', borderRadius: '8px', backgroundColor: '#fffbeb', color: '#d97706', cursor: 'pointer', fontWeight: 700, border: '1px solid #fde68a' }}
                     >
-                      {autorisationBase64 ? 'Changer' : 'Importer'}
+                      {autorisationBase64 ? 'Remplacer le document' : 'Importer l\'autorisation'}
                     </label>
                   </div>
                 </div>
 
-                <div className="mt-4">
-                  <label className="form-label" style={{ fontSize: '0.85rem', fontWeight: 600, color: '#cbd5e1' }}>Observations médicales / Allergies (Optionnel)</label>
+                <div className="mt-5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                    Observations Médicales / Allergies (Optionnel)
+                  </label>
                   <textarea 
                     name="observations_medicales" 
                     value={formData.observations_medicales} 
                     onChange={handleChange} 
                     rows={2} 
-                    placeholder="Signalez toute information médicale pertinente (asthme, allergies, etc.)"
-                    className="form-input" 
-                    style={{ resize: 'vertical' }}
+                    placeholder="Signalez toute information médicale pertinente (asthme, allergies, antécédents...)"
+                    style={{
+                      width: '100%',
+                      padding: '0.7rem 0.9rem',
+                      borderRadius: '8px',
+                      border: '1.5px solid #cbd5e1',
+                      backgroundColor: '#ffffff',
+                      color: '#0f172a',
+                      fontSize: '0.9rem',
+                      outline: 'none',
+                      resize: 'vertical'
+                    }}
                   />
                 </div>
               </div>
 
               {/* SECTION 3 : CONFORMITÉ LOI 18-07 & RÈGLEMENT */}
-              <div className="mb-8 p-4 rounded-xl" style={{ backgroundColor: 'rgba(99, 102, 241, 0.06)', border: '1px solid rgba(99, 102, 241, 0.2)' }}>
+              <div className="mb-8 p-5 rounded-xl" style={{ 
+                backgroundColor: errors.consentement_loi_18_07 ? '#fef2f2' : '#f8fafc', 
+                border: errors.consentement_loi_18_07 ? '1.5px solid #ef4444' : '1.5px solid #e2e8f0' 
+              }}>
                 <div className="flex items-start gap-3">
                   <input 
                     type="checkbox" 
@@ -922,45 +1170,51 @@ export default function PublicRegistration() {
                     name="consentement_loi_18_07" 
                     checked={formData.consentement_loi_18_07} 
                     onChange={handleChange} 
-                    required 
-                    style={{ width: '18px', height: '18px', marginTop: '2px', cursor: 'pointer', accentColor: '#6366f1' }}
+                    style={{ width: '20px', height: '20px', marginTop: '2px', cursor: 'pointer', accentColor: '#0f172a' }}
                   />
-                  <label htmlFor="consentement_loi_18_07" style={{ fontSize: '0.82rem', color: '#e2e8f0', lineHeight: '1.5', cursor: 'pointer' }}>
-                    <strong style={{ color: '#fff' }}>Conformité Loi 18-07 & Règlement Intérieur :</strong><br />
+                  <label htmlFor="consentement_loi_18_07" style={{ fontSize: '0.85rem', color: '#334155', lineHeight: '1.6', cursor: 'pointer' }}>
+                    <strong style={{ color: '#0f172a' }}>Conformité Loi 18-07 & Règlement Intérieur :</strong><br />
                     Je consens expressément au traitement de mes données personnelles et médicales par le <strong>Sporting Club Bouira</strong> dans le cadre strict de mon adhésion sportive et de la sécurité des entraînements, conformément à la loi 18-07. Je déclare avoir pris connaissance et accepter sans réserve le règlement intérieur du club.
                   </label>
                 </div>
+                {errors.consentement_loi_18_07 && (
+                  <span className="text-red-500 text-xs font-semibold mt-2 block pl-8">{errors.consentement_loi_18_07}</span>
+                )}
               </div>
 
               {/* BOUTON D'ENVOI */}
-              <Button 
+              <button 
                 type="submit" 
-                variant="primary" 
                 disabled={loading}
                 style={{ 
                   width: '100%', 
-                  padding: '0.9rem 1.5rem', 
-                  fontSize: '1rem', 
-                  fontWeight: 700, 
+                  padding: '1rem 1.5rem', 
+                  fontSize: '1.05rem', 
+                  fontWeight: 800, 
                   display: 'flex', 
                   alignItems: 'center', 
                   justifyContent: 'center', 
                   gap: '10px',
-                  backgroundColor: 'var(--accent-primary, #6366f1)',
-                  boxShadow: '0 4px 20px rgba(99, 102, 241, 0.35)'
+                  backgroundColor: '#0f172a', // BLEU MARINE PROFOND
+                  color: '#ffffff',
+                  borderRadius: '12px',
+                  border: 'none',
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  boxShadow: '0 8px 25px rgba(15, 23, 42, 0.25)',
+                  transition: 'transform 0.15s, background-color 0.2s'
                 }}
               >
-                <Download size={18} />
-                {loading ? 'Traitement en cours...' : "S'inscrire et télécharger ma fiche"}
-              </Button>
-            </Card>
+                <Download size={20} />
+                {loading ? 'Traitement & Génération de votre fiche...' : "S'inscrire et télécharger ma fiche (PDF)"}
+              </button>
+            </div>
           </motion.form>
         )}
 
         {/* PIED DE PAGE */}
-        <div className="text-center mt-8 text-xs" style={{ color: 'var(--text-muted, #64748b)' }}>
+        <div className="text-center mt-8 text-xs font-medium" style={{ color: '#64748b' }}>
           Sporting Club Bouira · Club Amateur Sportif Sporting Bouira · Wilaya de Bouira<br />
-          Tous droits réservés © {new Date().getFullYear()}
+          Portail conforme à la loi 18-07 relative à la protection des données personnelles © {new Date().getFullYear()}
         </div>
       </div>
     </div>
