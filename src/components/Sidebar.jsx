@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, CreditCard, ScanLine, LogOut, X, Shield, CalendarDays } from 'lucide-react';
+import { LayoutDashboard, Users, CreditCard, ScanLine, LogOut, X, Shield, CalendarDays, UserPlus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../supabaseClient';
 import toast from 'react-hot-toast';
@@ -8,6 +8,29 @@ import { useAuth } from '../contexts/AuthContext';
 
 export default function Sidebar({ isOpen, setIsOpen }) {
   const { role } = useAuth();
+  const [pendingInscriptionsCount, setPendingInscriptionsCount] = useState(0);
+
+  useEffect(() => {
+    const fetchPendingCount = async () => {
+      try {
+        const { count, error } = await supabase
+          .from('inscriptions')
+          .select('*', { count: 'exact', head: true })
+          .eq('statut', 'EN_ATTENTE');
+        if (!error && count !== null) {
+          setPendingInscriptionsCount(count);
+        }
+      } catch {
+        // Silently ignore if table doesn't exist yet
+      }
+    };
+    if (['admin', 'secretaire'].includes(role)) {
+      fetchPendingCount();
+      const interval = setInterval(fetchPendingCount, 25000);
+      return () => clearInterval(interval);
+    }
+  }, [role]);
+
   return (
     <>
       <AnimatePresence>
@@ -69,6 +92,18 @@ export default function Sidebar({ isOpen, setIsOpen }) {
           <span>Tableau de bord</span>
         </NavLink>
         
+        {['admin', 'secretaire'].includes(role) && (
+          <NavLink to="/inscriptions-en-attente" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"} onClick={() => setIsOpen(false)}>
+            <UserPlus size={18} />
+            <span>Inscriptions</span>
+            {pendingInscriptionsCount > 0 && (
+              <span style={{ marginLeft: 'auto', backgroundColor: '#f59e0b', color: '#000', fontSize: '0.7rem', fontWeight: 800, padding: '2px 7px', borderRadius: '10px' }}>
+                {pendingInscriptionsCount}
+              </span>
+            )}
+          </NavLink>
+        )}
+
         {['admin', 'secretaire', 'entraineur'].includes(role) && (
           <NavLink to="/athletes" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"} onClick={() => setIsOpen(false)}>
             <Users size={18} />

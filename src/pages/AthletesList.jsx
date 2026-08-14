@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Search, QrCode, Edit, Printer, Download, Upload, Trash2, Mail, MessageSquare, Send, CheckSquare } from 'lucide-react';
+import { Plus, Search, QrCode, Edit, Printer, Download, Upload, Trash2, Mail, MessageSquare, Send, CheckSquare, UserPlus } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import BadgeGenerator from '../components/BadgeGenerator';
@@ -267,6 +267,12 @@ export default function AthletesList() {
           <Button variant="secondary" onClick={handleExport}>
             <Download size={18} /> Exporter
           </Button>
+
+          <Link to="/inscriptions-en-attente" style={{ textDecoration: 'none' }}>
+            <Button variant="secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#f59e0b', borderColor: 'rgba(245, 158, 11, 0.35)', backgroundColor: 'rgba(245, 158, 11, 0.08)' }}>
+              <UserPlus size={18} /> Inscriptions en attente
+            </Button>
+          </Link>
 
           <Link to="/athletes/new" style={{ textDecoration: 'none' }}>
             <Button variant="primary">

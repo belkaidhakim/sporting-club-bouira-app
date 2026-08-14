@@ -19,6 +19,8 @@ const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const UpdatePassword = lazy(() => import('./pages/UpdatePassword'));
 const UsersManagement = lazy(() => import('./pages/UsersManagement'));
 const GroupsManagement = lazy(() => import('./pages/GroupsManagement'));
+const PublicRegistration = lazy(() => import('./pages/PublicRegistration'));
+const PendingInscriptions = lazy(() => import('./pages/PendingInscriptions'));
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 
@@ -129,12 +131,15 @@ function AppRoutes() {
             <Route path="/reset-password" element={session ? <Navigate to="/dashboard" replace /> : <ResetPassword />} />
             <Route path="/update-password" element={<UpdatePassword />} />
             
-            {/* Public / Scanner route without sidebar */}
+            {/* Public routes without sidebar */}
             <Route path="/scanner" element={<Scanner />} />
+            <Route path="/inscription" element={<PublicRegistration />} />
             
             {/* Admin routes with layout */}
             <Route path="/dashboard" element={<ProtectedRoute><AppLayout><Dashboard /></AppLayout></ProtectedRoute>} />
             
+            <Route path="/inscriptions-en-attente" element={<ProtectedRoute allowedRoles={['admin', 'secretaire']}><AppLayout><PendingInscriptions /></AppLayout></ProtectedRoute>} />
+
             <Route path="/athletes" element={<ProtectedRoute allowedRoles={['admin', 'secretaire', 'entraineur']}><AppLayout><AthletesList /></AppLayout></ProtectedRoute>} />
             <Route path="/athletes/new" element={<ProtectedRoute allowedRoles={['admin', 'secretaire']}><AppLayout><AthleteForm /></AppLayout></ProtectedRoute>} />
             <Route path="/athletes/edit/:id" element={<ProtectedRoute allowedRoles={['admin', 'secretaire']}><AppLayout><AthleteForm /></AppLayout></ProtectedRoute>} />
