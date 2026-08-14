@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
 import jsPDF from 'jspdf';
 import toast from 'react-hot-toast';
-import { TrendingUp, Search, Download, AlertTriangle, FileText, Edit, TrendingDown, DollarSign, Trash2 } from 'lucide-react';
+import { TrendingUp, Search, Download, AlertTriangle, FileText, Edit, TrendingDown, DollarSign, Trash2, Eye, Printer, X } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { z } from 'zod';
 import { useCotisations } from '../hooks/useCotisations';
@@ -70,6 +70,15 @@ export default function FinancialDashboard() {
     date_depense: new Date().toISOString().split('T')[0]
   };
   const [depenseData, setDepenseData] = useState(initialDepenseState);
+
+  // PDF Preview State
+  const [previewPdfModal, setPreviewPdfModal] = useState({
+    isOpen: false,
+    url: null,
+    fileName: '',
+    doc: null,
+    cotisation: null
+  });
   
   // Filters
   const [searchName, setSearchName] = useState('');
@@ -749,16 +758,63 @@ export default function FinancialDashboard() {
       doc.setFillColor(15, 23, 42); // Bleu Foncé
       doc.rect(0, 292, 210, 5, 'F');
 
-      // Sauvegarde du fichier PDF
       const sanitizedName = (cotisation.athletes?.nom || 'Adherent').replace(/[^a-zA-Z0-9_-]/g, '_');
       const dateFile = datePaiementStr.replace(/\//g, '-');
-      doc.save(`Recu_Paiement_${sanitizedName}_${dateFile}.pdf`);
+      const fileName = `Recu_Paiement_${sanitizedName}_${dateFile}.pdf`;
 
-      toast.dismiss(toastId);
-      toast.success('Reçu PDF généré et téléchargé avec succès !');
+      if (autoDownload) {
+        doc.save(fileName);
+        toast.dismiss(toastId);
+        toast.success('Reçu PDF téléchargé avec succès !');
+      } else {
+        const pdfBlob = doc.output('blob');
+        const blobUrl = URL.createObjectURL(pdfBlob);
+        setPreviewPdfModal({
+          isOpen: true,
+          url: blobUrl,
+          fileName: fileName,
+          doc: doc,
+          cotisation: cotisation
+        });
+        toast.dismiss(toastId);
+        toast.success('Aperçu du document prêt !');
+      }
     } catch (err) {
       console.error('Erreur génération PDF:', err);
-      toast.error('Erreur lors de la génération du reçu PDF : ' + err.message);
+      toast.error('Erreur lors de la génération de l\'aperçu : ' + err.message);
+    }
+  };
+
+  const handleClosePdfPreview = () => {
+    if (previewPdfModal.url) {
+      URL.revokeObjectURL(previewPdfModal.url);
+    }
+    setPreviewPdfModal({ isOpen: false, url: null, fileName: '', doc: null, cotisation: null });
+  };
+
+  const handleDownloadCurrentPdf = () => {
+    if (previewPdfModal.doc && previewPdfModal.fileName) {
+      previewPdfModal.doc.save(previewPdfModal.fileName);
+      toast.success('Document téléchargé avec succès !');
+    }
+  };
+
+  const handlePrintCurrentPdf = () => {
+    const iframe = document.getElementById('pdf-preview-iframe');
+    if (iframe && iframe.contentWindow) {
+      try {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+        return;
+      } catch (e) {
+        console.warn('Impression via iframe directe indisponible:', e);
+      }
+    }
+    if (previewPdfModal.url) {
+      const printWin = window.open(previewPdfModal.url, '_blank');
+      if (printWin) {
+        printWin.onload = () => printWin.print();
+      }
     }
   };
 
@@ -1175,7 +1231,23 @@ export default function FinancialDashboard() {
                       <td className="p-4 text-right">
                         <div className="flex justify-end gap-2">
                           <Button variant="secondary" style={{ padding: '0.4rem 0.75rem' }} onClick={() => handleEditClick(cotis)} title="Modifier ce paiement"><Edit size={16} /></Button>
-                          <Button variant="secondary" style={{ padding: '0.4rem 0.75rem' }} onClick={() => generatePDFReceipt(cotis)} title="Télécharger le reçu PDF"><FileText size={16} /> PDF</Button>
+                          <Button 
+                            variant="secondary" 
+                            style={{ 
+                              padding: '0.4rem 0.75rem',
+                              backgroundColor: 'rgba(99, 102, 241, 0.12)',
+                              border: '1px solid rgba(99, 102, 241, 0.25)',
+                              color: 'var(--accent-primary-hover)',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              fontWeight: 600
+                            }} 
+                            onClick={() => generatePDFReceipt(cotis, false)} 
+                            title="Aperçu avant téléchargement / impression"
+                          >
+                            <Eye size={15} /> Aperçu
+                          </Button>
                           <Button variant="secondary" style={{ padding: '0.4rem 0.75rem', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)' }} onClick={() => handleDeleteCotisation(cotis.id)} title="Supprimer ce paiement"><Trash2 size={16} /></Button>
                         </div>
                       </td>
@@ -1262,6 +1334,98 @@ export default function FinancialDashboard() {
           </div>
         )}
       </Card>
+
+      {/* MODALE D'APERÇU DU REÇU PDF */}
+      {previewPdfModal.isOpen && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.85)',
+          zIndex: 100,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '1rem',
+          backdropFilter: 'blur(5px)'
+        }}>
+          <div className="glass-panel" style={{
+            width: '920px',
+            maxWidth: '96vw',
+            maxHeight: '94vh',
+            display: 'flex',
+            flexDirection: 'column',
+            borderRadius: '16px',
+            overflow: 'hidden',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)',
+            border: '1px solid rgba(255, 255, 255, 0.15)'
+          }}>
+            {/* Header Modale */}
+            <div className="flex justify-between items-center p-4 border-b border-[rgba(255,255,255,0.1)]" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+              <div className="flex items-center gap-3">
+                <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: 'rgba(16, 185, 129, 0.15)', color: 'var(--accent-success)' }}>
+                  <FileText size={20} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    Aperçu du Reçu de Cotisation
+                  </h3>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                    {previewPdfModal.cotisation?.athletes?.nom?.toUpperCase()} {previewPdfModal.cotisation?.athletes?.prenom} · {previewPdfModal.fileName}
+                  </span>
+                </div>
+              </div>
+              <button 
+                onClick={handleClosePdfPreview}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '6px', borderRadius: '8px', display: 'flex', alignItems: 'center' }}
+                title="Fermer"
+              >
+                <X size={22} />
+              </button>
+            </div>
+
+            {/* Corps du Viewer PDF */}
+            <div style={{ flex: 1, minHeight: '62vh', backgroundColor: '#525659', position: 'relative' }}>
+              {previewPdfModal.url ? (
+                <iframe
+                  id="pdf-preview-iframe"
+                  src={`${previewPdfModal.url}#toolbar=0&navpanes=0`}
+                  title="Aperçu Document PDF"
+                  style={{ width: '100%', height: '100%', border: 'none', minHeight: '62vh' }}
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full text-white p-8">
+                  Chargement de l'aperçu...
+                </div>
+              )}
+            </div>
+
+            {/* Footer Modale avec Actions */}
+            <div className="p-4 flex flex-wrap justify-between items-center gap-3 border-t border-[rgba(255,255,255,0.1)]" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+              <Button variant="secondary" onClick={handleClosePdfPreview} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                <X size={16} /> Fermer
+              </Button>
+              <div className="flex items-center gap-3">
+                <Button 
+                  variant="secondary" 
+                  onClick={handlePrintCurrentPdf}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                  title="Imprimer directement le document"
+                >
+                  <Printer size={16} /> Imprimer
+                </Button>
+                <Button 
+                  variant="primary" 
+                  onClick={handleDownloadCurrentPdf}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                  title="Télécharger le fichier PDF sur votre appareil"
+                >
+                  <Download size={16} /> Télécharger le PDF
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
