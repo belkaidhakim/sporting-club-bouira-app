@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
 import jsPDF from 'jspdf';
 import toast from 'react-hot-toast';
-import { TrendingUp, Search, Download, AlertTriangle, FileText, Edit, TrendingDown, DollarSign } from 'lucide-react';
+import { TrendingUp, Search, Download, AlertTriangle, FileText, Edit, TrendingDown, DollarSign, Trash2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { z } from 'zod';
 import { useCotisations } from '../hooks/useCotisations';
@@ -62,6 +62,7 @@ export default function FinancialDashboard() {
   
   // Depense Form State
   const [showDepenseForm, setShowDepenseForm] = useState(false);
+  const [editingDepenseId, setEditingDepenseId] = useState(null);
   const initialDepenseState = {
     montant: '',
     description: '',
@@ -284,7 +285,36 @@ export default function FinancialDashboard() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleDeleteCotisation = async (id) => {
+    if (!window.confirm("Voulez-vous vraiment supprimer ce paiement de cotisation ?")) return;
+    try {
+      setLoading(true);
+      const { error } = await supabase.from('cotisations').delete().eq('id', id);
+      if (error) throw error;
+      toast.success("Paiement supprimé avec succès");
+      fetchCotisations();
+    } catch (err) {
+      toast.error("Erreur lors de la suppression : " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // --- Handlers for Dépenses ---
+  const handleEditDepense = (dep) => {
+    setDepenseData({
+      montant: dep.montant,
+      description: dep.description,
+      categorie: dep.categorie || 'Équipement',
+      date_depense: dep.date_depense ? new Date(dep.date_depense).toISOString().split('T')[0] : ''
+    });
+    setEditingDepenseId(dep.id);
+    setActiveTab('depenses');
+    setShowDepenseForm(true);
+    setShowPaymentForm(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleDepenseSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -294,17 +324,42 @@ export default function FinancialDashboard() {
     }
     try {
       setLoading(true);
-      const { error } = await supabase.from('depenses').insert([{
-        ...depenseData,
-        created_by: user?.id
-      }]);
-      if (error) throw error;
-      toast.success('Dépense enregistrée !');
+      if (editingDepenseId) {
+        const { error } = await supabase
+          .from('depenses')
+          .update(depenseData)
+          .eq('id', editingDepenseId);
+        if (error) throw error;
+        toast.success('Dépense modifiée avec succès !');
+      } else {
+        const { error } = await supabase.from('depenses').insert([{
+          ...depenseData,
+          created_by: user?.id
+        }]);
+        if (error) throw error;
+        toast.success('Dépense enregistrée !');
+      }
       setShowDepenseForm(false);
+      setEditingDepenseId(null);
       setDepenseData(initialDepenseState);
       fetchDepenses();
     } catch (error) {
       toast.error('Erreur : ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteDepense = async (id) => {
+    if (!window.confirm("Voulez-vous vraiment supprimer cette dépense ?")) return;
+    try {
+      setLoading(true);
+      const { error } = await supabase.from('depenses').delete().eq('id', id);
+      if (error) throw error;
+      toast.success("Dépense supprimée avec succès");
+      fetchDepenses();
+    } catch (err) {
+      toast.error("Erreur lors de la suppression : " + err.message);
     } finally {
       setLoading(false);
     }
@@ -581,7 +636,7 @@ export default function FinancialDashboard() {
 
       {showDepenseForm && (
         <Card className="mb-8 p-6" style={{ borderTop: '4px solid var(--accent-danger)' }}>
-          <h2 className="mb-4">Enregistrer une Dépense</h2>
+          <h2 className="mb-4">{editingDepenseId ? 'Modifier une Dépense' : 'Enregistrer une Dépense'}</h2>
           <form onSubmit={handleDepenseSubmit}>
             <div className="grid md:grid-cols-2 gap-6 mb-6">
               <div className="form-group">
@@ -610,8 +665,10 @@ export default function FinancialDashboard() {
               </div>
             </div>
             <div className="flex justify-end gap-4 mt-2">
-              <Button type="button" variant="secondary" onClick={() => setShowDepenseForm(false)}>Annuler</Button>
-              <Button type="submit" style={{ backgroundColor: 'var(--accent-danger)', color: 'white' }}>Enregistrer la dépense</Button>
+              <Button type="button" variant="secondary" onClick={() => { setShowDepenseForm(false); setEditingDepenseId(null); }}>Annuler</Button>
+              <Button type="submit" style={{ backgroundColor: 'var(--accent-danger)', color: 'white' }}>
+                {editingDepenseId ? 'Mettre à jour la dépense' : 'Enregistrer la dépense'}
+              </Button>
             </div>
           </form>
         </Card>
@@ -807,8 +864,9 @@ export default function FinancialDashboard() {
                       <td className="p-4">{cotis.mode_paiement}</td>
                       <td className="p-4 text-right">
                         <div className="flex justify-end gap-2">
-                          <Button variant="secondary" style={{ padding: '0.4rem 0.75rem' }} onClick={() => handleEditClick(cotis)}><Edit size={16} /></Button>
-                          <Button variant="secondary" style={{ padding: '0.4rem 0.75rem' }} onClick={() => generatePDFReceipt(cotis)}><FileText size={16} /> PDF</Button>
+                          <Button variant="secondary" style={{ padding: '0.4rem 0.75rem' }} onClick={() => handleEditClick(cotis)} title="Modifier ce paiement"><Edit size={16} /></Button>
+                          <Button variant="secondary" style={{ padding: '0.4rem 0.75rem' }} onClick={() => generatePDFReceipt(cotis)} title="Télécharger le reçu PDF"><FileText size={16} /> PDF</Button>
+                          <Button variant="secondary" style={{ padding: '0.4rem 0.75rem', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)' }} onClick={() => handleDeleteCotisation(cotis.id)} title="Supprimer ce paiement"><Trash2 size={16} /></Button>
                         </div>
                       </td>
                     </tr>
@@ -832,11 +890,12 @@ export default function FinancialDashboard() {
                     <th className="p-4 font-medium">Motif / Description</th>
                     <th className="p-4 font-medium">Catégorie</th>
                     <th className="p-4 font-medium text-right">Montant</th>
+                    <th className="p-4 font-medium text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {paginatedDepenses.length === 0 ? (
-                    <tr><td colSpan="4" className="p-8 text-center text-muted">Aucune dépense trouvée.</td></tr>
+                    <tr><td colSpan="5" className="p-8 text-center text-muted">Aucune dépense trouvée.</td></tr>
                   ) : paginatedDepenses.map(dep => (
                     <tr key={dep.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                       <td className="p-4">{new Date(dep.date_depense).toLocaleDateString('fr-FR')}</td>
@@ -847,6 +906,12 @@ export default function FinancialDashboard() {
                         </span>
                       </td>
                       <td className="p-4 text-right text-danger font-semibold">-{formatDZ(dep.montant)}</td>
+                      <td className="p-4 text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button variant="secondary" style={{ padding: '0.4rem 0.75rem' }} onClick={() => handleEditDepense(dep)} title="Modifier cette dépense"><Edit size={16} /></Button>
+                          <Button variant="secondary" style={{ padding: '0.4rem 0.75rem', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)' }} onClick={() => handleDeleteDepense(dep.id)} title="Supprimer cette dépense"><Trash2 size={16} /></Button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Users, AlertTriangle, CreditCard, ScanLine, DollarSign, Clock, UserX, Phone } from 'lucide-react';
+import { Users, AlertTriangle, CreditCard, ScanLine, DollarSign, Clock, UserX, Phone, Check, QrCode, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { supabase } from '../supabaseClient';
 import { Card, StatCard, Button, Badge, Skeleton } from '../components/ui';
+import BadgeGenerator from '../components/BadgeGenerator';
 import toast from 'react-hot-toast';
 
 const JOURS_FR = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
@@ -35,6 +36,11 @@ export default function Dashboard() {
     todayPresences: 0,
     expectedToday: 0,
     absentTodayList: [],
+    expiringSoon: [],
+    groupCapacityStats: [],
+    totalCapacity: 0,
+    totalEnrolled: 0,
+    globalFillRate: 0,
     recent: [],
     recentPresences: []
   });
@@ -42,6 +48,44 @@ export default function Dashboard() {
   const [viewMode, setViewMode] = useState('presences'); // 'presences' | 'absents'
   const [presenceFilter, setPresenceFilter] = useState('today'); // 'today', 'week', 'month', 'all'
   const [presenceSearch, setPresenceSearch] = useState('');
+  const [selectedAthlete, setSelectedAthlete] = useState(null);
+
+  // Validation manuelle de la présence pour un absent
+  const handleManualPresence = async (athlete) => {
+    try {
+      const { error } = await supabase
+        .from('presences')
+        .insert([{ athlete_id: athlete.id }]);
+
+      if (error && error.code !== '23505') throw error;
+
+      toast.success(`Présence validée manuellement pour ${athlete.nom} ${athlete.prenom} !`);
+
+      // Mettre à jour l'état local immédiatement
+      setStats(prev => ({
+        ...prev,
+        todayPresences: prev.todayPresences + 1,
+        absentTodayList: prev.absentTodayList.filter(a => a.id !== athlete.id),
+        recentPresences: [
+          {
+            id: `manual-${Date.now()}`,
+            date_scan: new Date().toISOString(),
+            athlete_id: athlete.id,
+            athletes: {
+              nom: athlete.nom,
+              prenom: athlete.prenom,
+              groupe: athlete.groupe,
+              groupes: athlete.groupes
+            }
+          },
+          ...prev.recentPresences
+        ]
+      }));
+    } catch (err) {
+      console.error('Erreur validation manuelle:', err);
+      toast.error('Erreur lors du pointage: ' + (err.message || ''));
+    }
+  };
 
   useEffect(() => {
     async function fetchStats() {
@@ -302,9 +346,16 @@ export default function Dashboard() {
                         <div style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--text-primary)' }}>{athlete.nom} {athlete.prenom}</div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Expire le : <strong>{athlete.endDateStr}</strong></div>
                       </div>
-                      <span style={{ padding: '2px 8px', borderRadius: '12px', backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', fontSize: '0.75rem', fontWeight: 700 }}>
-                        {athlete.daysLeft === 0 ? "Aujourd'hui" : `Dans ${athlete.daysLeft}j`}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span style={{ padding: '2px 8px', borderRadius: '12px', backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', fontSize: '0.75rem', fontWeight: 700 }}>
+                          {athlete.daysLeft === 0 ? "Aujourd'hui" : `Dans ${athlete.daysLeft}j`}
+                        </span>
+                        <Link to={`/finances?search=${encodeURIComponent(athlete.nom)}`} style={{ textDecoration: 'none' }}>
+                          <Button variant="secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', color: 'var(--accent-success)' }} title="Encaisser / Renouveler la cotisation">
+                            + Payer
+                          </Button>
+                        </Link>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -376,12 +427,13 @@ export default function Dashboard() {
                     <th>Groupe</th>
                     <th>Fin Cotisation</th>
                     <th>Statut</th>
+                    <th style={{ textAlign: 'right' }}>Badge</th>
                   </tr>
                 </thead>
                 <tbody>
                   {stats.recent.length === 0 ? (
                     <tr>
-                      <td colSpan="4" className="text-center text-muted" style={{ padding: '2rem 0' }}>Aucun inscrit pour le moment.</td>
+                      <td colSpan="5" className="text-center text-muted" style={{ padding: '2rem 0' }}>Aucun inscrit pour le moment.</td>
                     </tr>
                   ) : (
                     stats.recent.map(athlete => {
@@ -399,6 +451,16 @@ export default function Dashboard() {
                             <Badge status={statut}>
                               {statut === 'ACTIVE' ? 'Active' : 'Suspendue'}
                             </Badge>
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            <Button 
+                              variant="secondary" 
+                              style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem' }} 
+                              onClick={() => setSelectedAthlete(athlete)}
+                              title="Aperçu du badge"
+                            >
+                              <QrCode size={14} />
+                            </Button>
                           </td>
                         </tr>
                       )
@@ -568,7 +630,7 @@ export default function Dashboard() {
               ) : (
                 /* TABLEAU 2: ABSENTS DU JOUR SELON LE PLANNING */
                 <div className="table-responsive">
-                  <table style={{ minWidth: '550px' }}>
+                  <table style={{ minWidth: '600px' }}>
                     <thead>
                       <tr>
                         <th>Athlète Absent</th>
@@ -576,12 +638,13 @@ export default function Dashboard() {
                         <th>Séance Prévue</th>
                         <th>Contact / Téléphone</th>
                         <th>Statut</th>
+                        <th style={{ textAlign: 'right' }}>Pointage Manuel</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredAbsents.length === 0 ? (
                         <tr>
-                          <td colSpan="5" className="text-center text-success" style={{ padding: '2rem 0', fontWeight: 600 }}>
+                          <td colSpan="6" className="text-center text-success" style={{ padding: '2rem 0', fontWeight: 600 }}>
                             🎉 Aucun absent ! Tous les athlètes programmés ont pointé leur badge aujourd'hui.
                           </td>
                         </tr>
@@ -624,6 +687,16 @@ export default function Dashboard() {
                             <td>
                               <Badge status="SUSPENDUE">ABSENT</Badge>
                             </td>
+                            <td style={{ textAlign: 'right' }}>
+                              <Button 
+                                variant="primary" 
+                                style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', gap: '4px' }}
+                                onClick={() => handleManualPresence(athlete)}
+                                title="Marquer cet athlète comme présent"
+                              >
+                                <Check size={13} /> Valider
+                              </Button>
+                            </td>
                           </tr>
                         ))
                       )}
@@ -634,6 +707,26 @@ export default function Dashboard() {
             </Card>
           </motion.div>
         </motion.div>
+      )}
+
+      {/* MODALE D'APERÇU DU BADGE */}
+      {selectedAthlete && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div className="glass-panel p-6" style={{ width: '540px', maxWidth: '95vw', position: 'relative' }}>
+            <button 
+              onClick={() => setSelectedAthlete(null)} 
+              style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: '1.5rem' }}
+            >
+              <X size={22} />
+            </button>
+            <h2 className="mb-4 text-center">Badge d'accès</h2>
+            <BadgeGenerator athlete={selectedAthlete} />
+            <div className="mt-6 flex justify-center gap-3">
+              <Button variant="secondary" onClick={() => setSelectedAthlete(null)}>Fermer</Button>
+              <Button variant="primary" onClick={() => window.print()}>Imprimer</Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

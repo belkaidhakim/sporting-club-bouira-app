@@ -685,7 +685,7 @@ export default function AthletesList() {
       </Card>
 
       {selectedAthlete && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div className="glass-panel p-6" style={{ width: '540px', maxWidth: '95vw', position: 'relative' }}>
             <button 
               onClick={() => setSelectedAthlete(null)} 
@@ -695,8 +695,11 @@ export default function AthletesList() {
             </button>
             <h2 className="mb-4 text-center">Badge d'accès</h2>
             <BadgeGenerator athlete={selectedAthlete} />
-            <div className="mt-6 flex justify-center">
-               <Button variant="primary" onClick={() => window.print()}>Imprimer</Button>
+            <div className="mt-6 flex justify-center gap-3">
+              <Button variant="secondary" onClick={() => setSelectedAthlete(null)}>Fermer</Button>
+              <Button variant="primary" onClick={() => window.print()}>
+                <Printer size={16} /> Imprimer le badge
+              </Button>
             </div>
           </div>
         </div>

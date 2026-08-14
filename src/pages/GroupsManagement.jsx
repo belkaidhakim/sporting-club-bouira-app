@@ -132,6 +132,30 @@ export default function GroupsManagement() {
     setPlanning(planning.filter((_, i) => i !== index));
   };
 
+  const handleDeleteGroup = async (groupe) => {
+    const inscrits = groupe.athletes ? groupe.athletes.length : 0;
+    if (inscrits > 0) {
+      const confirmDelete = window.confirm(
+        `Ce groupe contient actuellement ${inscrits} athlète(s).\nSi vous le supprimez, ces athlètes ne seront plus assignés à ce groupe.\nVoulez-vous continuer ?`
+      );
+      if (!confirmDelete) return;
+    } else {
+      if (!window.confirm(`Voulez-vous vraiment supprimer le groupe "${groupe.nom}" ?`)) return;
+    }
+
+    try {
+      setLoading(true);
+      const { error } = await supabase.from('groupes').delete().eq('id', groupe.id);
+      if (error) throw error;
+      toast.success(`Groupe "${groupe.nom}" supprimé avec succès`);
+      fetchData();
+    } catch (err) {
+      console.error("Erreur suppression groupe:", err);
+      toast.error("Erreur lors de la suppression : " + err.message);
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -258,6 +282,14 @@ export default function GroupsManagement() {
                           title="Modifier le groupe"
                         >
                           <Edit2 size={16} />
+                        </button>
+
+                        <button 
+                          onClick={() => handleDeleteGroup(groupe)}
+                          style={{ background: 'none', border: 'none', color: 'var(--accent-danger)', cursor: 'pointer', padding: '4px' }}
+                          title="Supprimer le groupe"
+                        >
+                          <Trash2 size={16} />
                         </button>
                       </div>
                     </div>
