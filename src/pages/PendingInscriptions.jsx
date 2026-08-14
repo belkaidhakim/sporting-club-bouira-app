@@ -19,11 +19,43 @@ import {
   ExternalLink,
   Printer,
   X,
-  AlertTriangle
+  AlertTriangle,
+  MessageCircle,
+  DollarSign,
+  CheckSquare,
+  Square,
+  Sparkles
 } from 'lucide-react';
 import { Card, Button, Skeleton } from '../components/ui';
 import { useInscriptions } from '../hooks/useInscriptions';
 import BadgeGenerator from '../components/BadgeGenerator';
+
+// Calcul précis de l'âge
+const calculateAge = (dateNaissance) => {
+  if (!dateNaissance) return null;
+  const birth = new Date(dateNaissance);
+  if (isNaN(birth.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+    age--;
+  }
+  return age;
+};
+
+// Nettoyage du numéro de téléphone pour lien WhatsApp algérien (+213)
+const formatWhatsAppPhone = (phone) => {
+  if (!phone) return null;
+  const cleaned = phone.replace(/[^0-9]/g, '');
+  if (cleaned.startsWith('0')) {
+    return `213${cleaned.substring(1)}`;
+  }
+  if (cleaned.startsWith('213')) {
+    return cleaned;
+  }
+  return `213${cleaned}`;
+};
 
 export default function PendingInscriptions() {
   const { 
@@ -32,6 +64,7 @@ export default function PendingInscriptions() {
     isTableMissing,
     fetchInscriptions, 
     validerInscription, 
+    validerMultipleInscriptions,
     rejeterInscription, 
     deleteInscription 
   } = useInscriptions();
@@ -39,21 +72,32 @@ export default function PendingInscriptions() {
   const [activeTab, setActiveTab] = useState('EN_ATTENTE'); // 'EN_ATTENTE', 'VALIDE', 'REJETE', 'ALL'
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Selected inscription for modal view
+  // Multi-sélection (Bulk Actions)
+  const [selectedIds, setSelectedIds] = useState([]);
+
+  // Modale d'examen détaillé
   const [selectedInscription, setSelectedInscription] = useState(null);
   
-  // Rejection modal state
-  const [rejectionModal, setRejectionModal] = useState({
-    isOpen: false,
-    inscriptionId: null,
-    athleteName: '',
-    motif: ''
+  // Option de paiement lors de la validation
+  const [paymentForm, setPaymentForm] = useState({
+    isPaid: true,
+    montant: 3000,
+    modePaiement: 'Espèces',
+    periodeFin: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   });
 
-  // Badge preview modal for newly validated athlete
+  // Modale de rejet
+  const [rejectionModal, setRejectionModal] = useState({
+    isOpen: false,
+    inscriptionIds: [],
+    athleteName: '',
+    motif: 'Certificat médical non conforme ou illisible'
+  });
+
+  // Modale de Badge QR après validation
   const [validatedAthleteBadge, setValidatedAthleteBadge] = useState(null);
 
-  // Document zoom / viewer modal
+  // Modale visionneuse de document
   const [documentViewer, setDocumentViewer] = useState({
     isOpen: false,
     title: '',
@@ -64,7 +108,7 @@ export default function PendingInscriptions() {
     fetchInscriptions();
   }, [fetchInscriptions]);
 
-  // Statistiques
+  // Statistiques compactes
   const stats = useMemo(() => {
     const pending = inscriptions.filter(i => i.statut === 'EN_ATTENTE').length;
     const validated = inscriptions.filter(i => i.statut === 'VALIDE').length;
@@ -75,11 +119,7 @@ export default function PendingInscriptions() {
   // Filtrage et recherche
   const filteredInscriptions = useMemo(() => {
     return inscriptions.filter(item => {
-      // Filtre statut
-      if (activeTab !== 'ALL' && item.statut !== activeTab) {
-        return false;
-      }
-      // Filtre recherche
+      if (activeTab !== 'ALL' && item.statut !== activeTab) return false;
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const nom = (item.nom || '').toLowerCase();
@@ -93,48 +133,82 @@ export default function PendingInscriptions() {
     });
   }, [inscriptions, activeTab, searchQuery]);
 
-  // Copier le lien d'inscription publique
-  const copyPublicLink = () => {
-    const publicUrl = `${window.location.origin}/inscription`;
-    navigator.clipboard.writeText(publicUrl);
-    toast.success('Lien public copié dans le presse-papiers !');
+  // Gestion de la sélection multiple
+  const handleToggleSelectAll = () => {
+    if (selectedIds.length === filteredInscriptions.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filteredInscriptions.map(i => i.id));
+    }
   };
 
-  // Traiter la validation
-  const handleValidate = async (inscription) => {
-    const newAthlete = await validerInscription(inscription);
+  const handleToggleSelect = (id) => {
+    setSelectedIds(prev => 
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  // Validation en lot
+  const handleBulkValidate = async () => {
+    const itemsToValidate = inscriptions.filter(i => selectedIds.includes(i.id) && i.statut === 'EN_ATTENTE');
+    if (itemsToValidate.length === 0) {
+      toast.error('Aucun dossier en attente sélectionné.');
+      return;
+    }
+    if (window.confirm(`Confirmez-vous la validation de ${itemsToValidate.length} dossier(s) ? Les profils athlètes et badges QR seront créés automatiquement.`)) {
+      await validerMultipleInscriptions(itemsToValidate);
+      setSelectedIds([]);
+    }
+  };
+
+  // Rejet en lot
+  const handleBulkReject = () => {
+    const itemsToReject = inscriptions.filter(i => selectedIds.includes(i.id) && i.statut === 'EN_ATTENTE');
+    if (itemsToReject.length === 0) {
+      toast.error('Aucun dossier en attente sélectionné.');
+      return;
+    }
+    setRejectionModal({
+      isOpen: true,
+      inscriptionIds: itemsToReject.map(i => i.id),
+      athleteName: `${itemsToReject.length} dossiers sélectionnés`,
+      motif: 'Dossier incomplet ou certificat médical manquant'
+    });
+  };
+
+  // Validation individuelle avec prise en compte du paiement
+  const handleSingleValidate = async (inscription) => {
+    const newAthlete = await validerInscription(inscription, paymentForm);
     if (newAthlete) {
       if (selectedInscription && selectedInscription.id === inscription.id) {
         setSelectedInscription(null);
       }
-      // Proposer l'aperçu du badge
       setValidatedAthleteBadge(newAthlete);
     }
   };
 
-  // Ouvrir modale de rejet
-  const openRejectionModal = (inscription) => {
-    setRejectionModal({
-      isOpen: true,
-      inscriptionId: inscription.id,
-      athleteName: `${inscription.nom?.toUpperCase()} ${inscription.prenom}`,
-      motif: 'Certificat médical non conforme ou illisible'
-    });
-  };
-
-  // Confirmer le rejet
+  // Confirmer le rejet (individuel ou en lot)
   const handleConfirmRejection = async () => {
     if (!rejectionModal.motif.trim()) {
       toast.error('Veuillez indiquer un motif de rejet.');
       return;
     }
-    const success = await rejeterInscription(rejectionModal.inscriptionId, rejectionModal.motif);
-    if (success) {
-      setRejectionModal({ isOpen: false, inscriptionId: null, athleteName: '', motif: '' });
-      if (selectedInscription && selectedInscription.id === rejectionModal.inscriptionId) {
-        setSelectedInscription(null);
-      }
+
+    for (const id of rejectionModal.inscriptionIds) {
+      await rejeterInscription(id, rejectionModal.motif);
     }
+
+    setRejectionModal({ isOpen: false, inscriptionIds: [], athleteName: '', motif: '' });
+    setSelectedIds([]);
+    if (selectedInscription && rejectionModal.inscriptionIds.includes(selectedInscription.id)) {
+      setSelectedInscription(null);
+    }
+  };
+
+  const copyPublicLink = () => {
+    const publicUrl = `${window.location.origin}/inscription`;
+    navigator.clipboard.writeText(publicUrl);
+    toast.success('Lien public copié dans le presse-papiers !');
   };
 
   const copySqlScript = () => {
@@ -184,28 +258,28 @@ CREATE POLICY "Admins can delete inscriptions" ON public.inscriptions FOR DELETE
   return (
     <div>
       {/* HEADER DE LA PAGE */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-3">
         <div>
-          <h1>Inscriptions en Attente</h1>
-          <p>Examinez les dossiers d'adhésion en ligne, vérifiez les pièces justificatives et intégrez les nouveaux membres.</p>
+          <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800 }}>Inscriptions en Attente</h1>
+          <p style={{ margin: '2px 0 0', fontSize: '0.85rem' }}>Examinez les dossiers d'adhésion en ligne, vérifiez les pièces justificatives et intégrez les nouveaux membres.</p>
         </div>
 
         <div className="flex items-center gap-2">
           <Button 
             variant="secondary" 
             onClick={copyPublicLink}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
             title="Copier le lien du formulaire public à partager aux athlètes"
           >
-            <Copy size={16} /> Copier le lien d'inscription
+            <Copy size={15} /> Copier le lien
           </Button>
           <Button 
             variant="primary" 
             onClick={() => window.open('/inscription', '_blank')}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
             title="Ouvrir la page publique d'inscription dans un nouvel onglet"
           >
-            <ExternalLink size={16} /> Formulaire Public
+            <ExternalLink size={15} /> Formulaire Public
           </Button>
         </div>
       </div>
@@ -213,269 +287,430 @@ CREATE POLICY "Admins can delete inscriptions" ON public.inscriptions FOR DELETE
       {/* BANDEAU SI LA TABLE SUPABASE N'EST PAS ENCORE EXÉCUTÉE */}
       {isTableMissing && (
         <div 
-          className="p-4 mb-6 rounded-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4"
+          className="p-3 mb-4 rounded-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-3 text-sm"
           style={{ backgroundColor: 'rgba(245, 158, 11, 0.12)', border: '1px solid rgba(245, 158, 11, 0.35)', color: '#f8fafc' }}
         >
-          <div className="flex items-start gap-3">
-            <AlertTriangle size={24} color="#f59e0b" style={{ flexShrink: 0, marginTop: '2px' }} />
+          <div className="flex items-center gap-3">
+            <AlertTriangle size={20} color="#f59e0b" style={{ flexShrink: 0 }} />
             <div>
-              <strong style={{ color: '#f59e0b', fontSize: '0.95rem' }}>Activation de la base Supabase requise :</strong>
-              <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: '#cbd5e1' }}>
-                Pour activer la synchronisation permanente en ligne, exécutez le script SQL dans votre console Supabase (SQL Editor).
-              </p>
+              <strong style={{ color: '#f59e0b' }}>Activation de la base Supabase :</strong> Exécutez le script SQL dans votre console Supabase pour la synchronisation multi-appareils.
             </div>
           </div>
           <Button 
             variant="secondary"
             onClick={copySqlScript}
-            style={{ backgroundColor: '#f59e0b', color: '#000', fontWeight: 700, borderColor: '#f59e0b', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', backgroundColor: '#f59e0b', color: '#000', fontWeight: 700, borderColor: '#f59e0b', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
           >
-            <Copy size={16} /> Copier le Script SQL (1-clic)
+            <Copy size={14} /> Copier le Script SQL (1-clic)
           </Button>
         </div>
       )}
 
-      {/* STATS RAPIDES */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <Card className="p-4" style={{ borderLeft: '4px solid #f59e0b' }}>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>En attente</span>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#f59e0b' }}>{stats.pending}</div>
+      {/* 1. DISPOSITION COMPACTE HORIZONTALE DES CARTES STATISTIQUES */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        <Card className="p-3 flex items-center justify-between" style={{ borderLeft: '4px solid #f59e0b' }}>
+          <div>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>En attente</span>
+            <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#f59e0b', lineHeight: 1.1 }}>{stats.pending}</div>
+          </div>
+          <div style={{ padding: '6px', borderRadius: '8px', backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b' }}>
+            <Clock size={18} />
+          </div>
         </Card>
-        <Card className="p-4" style={{ borderLeft: '4px solid #10b981' }}>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Validées</span>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--accent-success)' }}>{stats.validated}</div>
+
+        <Card className="p-3 flex items-center justify-between" style={{ borderLeft: '4px solid #10b981' }}>
+          <div>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Validées</span>
+            <div style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--accent-success)', lineHeight: 1.1 }}>{stats.validated}</div>
+          </div>
+          <div style={{ padding: '6px', borderRadius: '8px', backgroundColor: 'rgba(16, 185, 129, 0.15)', color: 'var(--accent-success)' }}>
+            <CheckCircle size={18} />
+          </div>
         </Card>
-        <Card className="p-4" style={{ borderLeft: '4px solid #ef4444' }}>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Rejetées</span>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--accent-danger)' }}>{stats.rejected}</div>
+
+        <Card className="p-3 flex items-center justify-between" style={{ borderLeft: '4px solid #ef4444' }}>
+          <div>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Rejetées</span>
+            <div style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--accent-danger)', lineHeight: 1.1 }}>{stats.rejected}</div>
+          </div>
+          <div style={{ padding: '6px', borderRadius: '8px', backgroundColor: 'rgba(239, 68, 68, 0.15)', color: 'var(--accent-danger)' }}>
+            <XCircle size={18} />
+          </div>
         </Card>
-        <Card className="p-4" style={{ borderLeft: '4px solid #6366f1' }}>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Total Dossiers</span>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#818cf8' }}>{stats.total}</div>
+
+        <Card className="p-3 flex items-center justify-between" style={{ borderLeft: '4px solid #6366f1' }}>
+          <div>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Total Dossiers</span>
+            <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#818cf8', lineHeight: 1.1 }}>{stats.total}</div>
+          </div>
+          <div style={{ padding: '6px', borderRadius: '8px', backgroundColor: 'rgba(99, 102, 241, 0.15)', color: '#818cf8' }}>
+            <Users size={18} />
+          </div>
         </Card>
       </div>
 
+      {/* BANDEAU FLOTTANT D'ACTIONS EN MASSE (BULK ACTIONS) */}
+      {selectedIds.length > 0 && (
+        <motion.div 
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="p-3 mb-4 rounded-xl flex flex-wrap justify-between items-center gap-3"
+          style={{
+            backgroundColor: 'rgba(99, 102, 241, 0.15)',
+            border: '1px solid rgba(99, 102, 241, 0.4)',
+            boxShadow: '0 4px 20px rgba(99, 102, 241, 0.25)',
+            backdropFilter: 'blur(8px)'
+          }}
+        >
+          <div className="flex items-center gap-2">
+            <span style={{ fontWeight: 700, color: '#fff', fontSize: '0.85rem' }}>
+              {selectedIds.length} dossier(s) sélectionné(s)
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="primary" 
+              onClick={handleBulkValidate}
+              style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem', backgroundColor: 'var(--accent-success)', borderColor: 'var(--accent-success)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            >
+              <CheckCircle size={15} /> Valider les sélectionnés
+            </Button>
+            <Button 
+              variant="secondary" 
+              onClick={handleBulkReject}
+              style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.35)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            >
+              <XCircle size={15} /> Rejeter
+            </Button>
+            <Button 
+              variant="secondary" 
+              onClick={() => setSelectedIds([])}
+              style={{ padding: '0.35rem 0.6rem', fontSize: '0.8rem' }}
+            >
+              Désélectionner
+            </Button>
+          </div>
+        </motion.div>
+      )}
+
       {/* ONGLETS & RECHERCHE */}
       <Card className="mb-6">
-        <div className="p-4 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 border-b border-[rgba(255,255,255,0.06)]">
+        <div className="p-3 px-4 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3 border-b border-[rgba(255,255,255,0.06)]">
           {/* Tabs */}
           <div className="flex gap-2">
             <button 
               className={`tab-btn ${activeTab === 'EN_ATTENTE' ? 'active' : ''}`}
-              onClick={() => setActiveTab('EN_ATTENTE')}
-              style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem', backgroundColor: activeTab === 'EN_ATTENTE' ? 'var(--accent-primary)' : 'rgba(255,255,255,0.05)', color: activeTab === 'EN_ATTENTE' ? '#fff' : 'var(--text-muted)' }}
+              onClick={() => { setActiveTab('EN_ATTENTE'); setSelectedIds([]); }}
+              style={{ padding: '0.4rem 0.85rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem', backgroundColor: activeTab === 'EN_ATTENTE' ? 'var(--accent-primary)' : 'rgba(255,255,255,0.05)', color: activeTab === 'EN_ATTENTE' ? '#fff' : 'var(--text-muted)' }}
             >
               En attente ({stats.pending})
             </button>
             <button 
               className={`tab-btn ${activeTab === 'VALIDE' ? 'active' : ''}`}
-              onClick={() => setActiveTab('VALIDE')}
-              style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem', backgroundColor: activeTab === 'VALIDE' ? 'var(--accent-success)' : 'rgba(255,255,255,0.05)', color: activeTab === 'VALIDE' ? '#fff' : 'var(--text-muted)' }}
+              onClick={() => { setActiveTab('VALIDE'); setSelectedIds([]); }}
+              style={{ padding: '0.4rem 0.85rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem', backgroundColor: activeTab === 'VALIDE' ? 'var(--accent-success)' : 'rgba(255,255,255,0.05)', color: activeTab === 'VALIDE' ? '#fff' : 'var(--text-muted)' }}
             >
               Validées ({stats.validated})
             </button>
             <button 
               className={`tab-btn ${activeTab === 'REJETE' ? 'active' : ''}`}
-              onClick={() => setActiveTab('REJETE')}
-              style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem', backgroundColor: activeTab === 'REJETE' ? 'var(--accent-danger)' : 'rgba(255,255,255,0.05)', color: activeTab === 'REJETE' ? '#fff' : 'var(--text-muted)' }}
+              onClick={() => { setActiveTab('REJETE'); setSelectedIds([]); }}
+              style={{ padding: '0.4rem 0.85rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem', backgroundColor: activeTab === 'REJETE' ? 'var(--accent-danger)' : 'rgba(255,255,255,0.05)', color: activeTab === 'REJETE' ? '#fff' : 'var(--text-muted)' }}
             >
               Rejetées ({stats.rejected})
             </button>
             <button 
               className={`tab-btn ${activeTab === 'ALL' ? 'active' : ''}`}
-              onClick={() => setActiveTab('ALL')}
-              style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem', backgroundColor: activeTab === 'ALL' ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.05)', color: activeTab === 'ALL' ? '#fff' : 'var(--text-muted)' }}
+              onClick={() => { setActiveTab('ALL'); setSelectedIds([]); }}
+              style={{ padding: '0.4rem 0.85rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem', backgroundColor: activeTab === 'ALL' ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.05)', color: activeTab === 'ALL' ? '#fff' : 'var(--text-muted)' }}
             >
               Toutes ({stats.total})
             </button>
           </div>
 
           {/* Recherche */}
-          <div style={{ position: 'relative', width: '100%', maxWidth: '320px' }}>
-            <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+          <div style={{ position: 'relative', width: '100%', maxWidth: '300px' }}>
+            <Search size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
             <input 
               type="text" 
               placeholder="Rechercher par nom, dossier..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="form-input"
-              style={{ paddingLeft: '36px', fontSize: '0.85rem' }}
+              style={{ paddingLeft: '34px', fontSize: '0.8rem', paddingBlock: '0.4rem' }}
             />
           </div>
         </div>
 
         {/* LISTE DES DOSSIERS */}
         {loading ? (
-          <div className="p-8 flex flex-col gap-4">
-            <Skeleton height="50px" />
-            <Skeleton height="50px" />
-            <Skeleton height="50px" />
+          <div className="p-6 flex flex-col gap-3">
+            <Skeleton height="45px" />
+            <Skeleton height="45px" />
+            <Skeleton height="45px" />
           </div>
         ) : filteredInscriptions.length === 0 ? (
           <div className="p-12 text-center text-muted">
-            <FileText size={40} style={{ margin: '0 auto 12px', opacity: 0.4 }} />
-            <p style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>Aucun dossier d'inscription trouvé.</p>
-            <span style={{ fontSize: '0.85rem' }}>Les nouvelles pré-inscriptions publiques apparaîtront automatiquement ici.</span>
+            <FileText size={36} style={{ margin: '0 auto 10px', opacity: 0.35 }} />
+            <p style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600 }}>Aucun dossier d'inscription dans cette vue.</p>
+            <span style={{ fontSize: '0.8rem' }}>Les nouvelles pré-inscriptions publiques apparaîtront automatiquement ici.</span>
           </div>
         ) : (
           <div className="table-responsive">
-            <table className="w-full text-left border-collapse" style={{ minWidth: '850px' }}>
+            <table className="w-full text-left border-collapse" style={{ minWidth: '920px' }}>
               <thead>
-                <tr style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-muted)', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  <th className="p-4">Dossier</th>
-                  <th className="p-4">Candidat</th>
-                  <th className="p-4">Section / Groupe</th>
-                  <th className="p-4">Contact</th>
-                  <th className="p-4">Pièces Jointes</th>
-                  <th className="p-4">Statut</th>
-                  <th className="p-4 text-right">Actions</th>
+                <tr style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-muted)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <th className="p-3 px-4" style={{ width: '40px' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={selectedIds.length === filteredInscriptions.length && filteredInscriptions.length > 0}
+                      onChange={handleToggleSelectAll}
+                      style={{ cursor: 'pointer', accentColor: '#6366f1', width: '16px', height: '16px' }}
+                    />
+                  </th>
+                  <th className="p-3">Dossier</th>
+                  <th className="p-3">Candidat & Âge</th>
+                  <th className="p-3">Section</th>
+                  <th className="p-3">Contact Rapide</th>
+                  <th className="p-3">Pièces Jointes</th>
+                  <th className="p-3">Frais Inscription</th>
+                  <th className="p-3">Statut</th>
+                  <th className="p-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredInscriptions.map((item) => (
-                  <tr key={item.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    {/* Dossier & Date */}
-                    <td className="p-4">
-                      <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--accent-primary)' }}>
-                        {item.numero_dossier}
-                      </span>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                        {new Date(item.date_demande).toLocaleDateString('fr-FR')}
-                      </div>
-                    </td>
+                {filteredInscriptions.map((item) => {
+                  const age = calculateAge(item.date_naissance);
+                  const isMinor = age !== null && age < 18;
+                  const waNumber = formatWhatsAppPhone(item.telephone_parent || item.telephone);
+                  const isSelected = selectedIds.includes(item.id);
 
-                    {/* Candidat */}
-                    <td className="p-4">
-                      <div className="flex items-center gap-3">
-                        <div style={{ width: '38px', height: '38px', borderRadius: '50%', overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.08)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          {item.photo ? (
-                            <img src={item.photo} alt={item.nom} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                          ) : (
-                            <Camera size={18} color="var(--text-muted)" />
+                  return (
+                    <tr 
+                      key={item.id} 
+                      style={{ 
+                        borderBottom: '1px solid rgba(255,255,255,0.05)',
+                        backgroundColor: isSelected ? 'rgba(99, 102, 241, 0.08)' : 'transparent'
+                      }}
+                    >
+                      {/* Checkbox */}
+                      <td className="p-3 px-4">
+                        <input 
+                          type="checkbox" 
+                          checked={isSelected}
+                          onChange={() => handleToggleSelect(item.id)}
+                          style={{ cursor: 'pointer', accentColor: '#6366f1', width: '16px', height: '16px' }}
+                        />
+                      </td>
+
+                      {/* Dossier & Date */}
+                      <td className="p-3">
+                        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--accent-primary)' }}>
+                          {item.numero_dossier}
+                        </span>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                          {new Date(item.date_demande).toLocaleDateString('fr-FR')}
+                        </div>
+                      </td>
+
+                      {/* Candidat + Calcul Âge automatique */}
+                      <td className="p-3">
+                        <div className="flex items-center gap-3">
+                          <div style={{ width: '36px', height: '36px', borderRadius: '50%', overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.08)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {item.photo ? (
+                              <img src={item.photo} alt={item.nom} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ) : (
+                              <Camera size={16} color="var(--text-muted)" />
+                            )}
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.88rem' }}>
+                              {item.nom?.toUpperCase()} {item.prenom}
+                            </div>
+                            <span style={{ fontSize: '0.75rem', color: '#cbd5e1' }}>
+                              {item.date_naissance ? (
+                                <>
+                                  {new Date(item.date_naissance).toLocaleDateString('fr-FR')} · <strong style={{ color: '#10b981' }}>{age} ans</strong> ({item.sexe})
+                                </>
+                              ) : item.sexe}
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Section */}
+                      <td className="p-3 font-medium" style={{ fontSize: '0.85rem' }}>
+                        {item.groupes?.nom || item.groupe_nom || <span className="text-muted">Non spécifié</span>}
+                      </td>
+
+                      {/* Contact Rapide (tel: et WhatsApp cliquable) */}
+                      <td className="p-3">
+                        <div className="flex items-center gap-2">
+                          <a 
+                            href={`tel:${item.telephone}`} 
+                            style={{ color: 'var(--text-primary)', fontSize: '0.82rem', textDecoration: 'none', fontWeight: 600 }}
+                            title="Appeler l'adhérent"
+                          >
+                            {item.telephone}
+                          </a>
+                          {waNumber && (
+                            <a 
+                              href={`https://wa.me/${waNumber}?text=Bonjour%20${encodeURIComponent(item.prenom || '')},%20concernant%20votre%20pré-inscription%20au%20Sporting%20Club%20Bouira...`} 
+                              target="_blank" 
+                              rel="noreferrer"
+                              style={{ color: '#25D366', display: 'inline-flex', alignItems: 'center', padding: '2px', borderRadius: '4px', backgroundColor: 'rgba(37, 211, 102, 0.1)' }}
+                              title="Contacter immédiatement sur WhatsApp"
+                            >
+                              <MessageCircle size={15} />
+                            </a>
                           )}
                         </div>
-                        <div>
-                          <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.9rem' }}>
-                            {item.nom?.toUpperCase()} {item.prenom}
+                        {item.telephone_parent && (
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                            Parent : <a href={`tel:${item.telephone_parent}`} style={{ color: 'var(--text-muted)' }}>{item.telephone_parent}</a>
                           </div>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                            {item.date_naissance ? `${new Date(item.date_naissance).toLocaleDateString('fr-FR')} (${item.sexe})` : item.sexe}
-                          </span>
-                        </div>
-                      </div>
-                    </td>
+                        )}
+                      </td>
 
-                    {/* Section */}
-                    <td className="p-4 font-medium" style={{ fontSize: '0.85rem' }}>
-                      {item.groupes?.nom || item.groupe_nom || <span className="text-muted">Non spécifié</span>}
-                    </td>
-
-                    {/* Contact */}
-                    <td className="p-4">
-                      <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>
-                        {item.telephone}
-                      </div>
-                      {item.telephone_parent && (
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                          Parent : {item.telephone_parent}
-                        </div>
-                      )}
-                    </td>
-
-                    {/* Pièces Jointes */}
-                    <td className="p-4">
-                      <div className="flex gap-2">
-                        <span 
-                          title={item.photo ? "Photo fournie" : "Photo manquante"}
-                          style={{ padding: '3px 8px', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 600, backgroundColor: item.photo ? 'rgba(99, 102, 241, 0.15)' : 'rgba(255,255,255,0.05)', color: item.photo ? '#818cf8' : 'var(--text-muted)' }}
-                        >
-                          Photo {item.photo ? '✔' : '✖'}
-                        </span>
-                        <span 
-                          title={item.certificat_medical ? "Certificat médical fourni" : "Certificat médical manquant"}
-                          style={{ padding: '3px 8px', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 600, backgroundColor: item.certificat_medical ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255,255,255,0.05)', color: item.certificat_medical ? '#10b981' : 'var(--text-muted)' }}
-                        >
-                          Médical {item.certificat_medical ? '✔' : '✖'}
-                        </span>
-                        {item.autorisation_parentale && (
+                      {/* 2. LISIBILITÉ AMÉLIORÉE DES PIÈCES JOINTES (Vert ✔ / Rouge ❌) */}
+                      <td className="p-3">
+                        <div className="flex flex-wrap gap-1">
+                          {/* Photo */}
                           <span 
-                            title="Autorisation parentale fournie"
-                            style={{ padding: '3px 8px', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 600, backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b' }}
+                            title={item.photo ? "Photo d'identité fournie" : "Photo d'identité manquante"}
+                            style={{ 
+                              padding: '2px 6px', 
+                              borderRadius: '6px', 
+                              fontSize: '0.68rem', 
+                              fontWeight: 700, 
+                              backgroundColor: item.photo ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)', 
+                              color: item.photo ? '#10b981' : '#ef4444' 
+                            }}
                           >
-                            Parent ✔
+                            Photo {item.photo ? '✔' : '❌'}
+                          </span>
+
+                          {/* Certificat médical */}
+                          <span 
+                            title={item.certificat_medical ? "Certificat médical d'aptitude fourni" : "Certificat médical manquant"}
+                            style={{ 
+                              padding: '2px 6px', 
+                              borderRadius: '6px', 
+                              fontSize: '0.68rem', 
+                              fontWeight: 700, 
+                              backgroundColor: item.certificat_medical ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)', 
+                              color: item.certificat_medical ? '#10b981' : '#ef4444' 
+                            }}
+                          >
+                            Médical {item.certificat_medical ? '✔' : '❌'}
+                          </span>
+
+                          {/* Autorisation parentale (Obligatoire si mineur) */}
+                          {isMinor ? (
+                            <span 
+                              title={item.autorisation_parentale ? "Autorisation parentale signée fournie" : "Autorisation parentale obligatoire manquante"}
+                              style={{ 
+                                padding: '2px 6px', 
+                                borderRadius: '6px', 
+                                fontSize: '0.68rem', 
+                                fontWeight: 700, 
+                                backgroundColor: item.autorisation_parentale ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)', 
+                                color: item.autorisation_parentale ? '#10b981' : '#ef4444' 
+                              }}
+                            >
+                              Parent {item.autorisation_parentale ? '✔' : '❌'}
+                            </span>
+                          ) : (
+                            <span style={{ padding: '2px 6px', borderRadius: '6px', fontSize: '0.68rem', backgroundColor: 'rgba(255,255,255,0.05)', color: 'var(--text-muted)' }}>
+                              Majeur
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Statut Financier / Frais d'inscription */}
+                      <td className="p-3">
+                        {item.statut === 'VALIDE' ? (
+                          <span style={{ padding: '3px 8px', borderRadius: '10px', fontSize: '0.72rem', fontWeight: 700, backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#10b981' }}>
+                            Payé
+                          </span>
+                        ) : (
+                          <span style={{ padding: '3px 8px', borderRadius: '10px', fontSize: '0.72rem', fontWeight: 700, backgroundColor: 'rgba(245, 158, 11, 0.12)', color: '#f59e0b' }}>
+                            À encaisser
                           </span>
                         )}
-                      </div>
-                    </td>
+                      </td>
 
-                    {/* Statut */}
-                    <td className="p-4">
-                      {item.statut === 'EN_ATTENTE' && (
-                        <span style={{ padding: '4px 10px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 700, backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b' }}>
-                          En Attente
-                        </span>
-                      )}
-                      {item.statut === 'VALIDE' && (
-                        <span style={{ padding: '4px 10px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 700, backgroundColor: 'rgba(16, 185, 129, 0.15)', color: 'var(--accent-success)' }}>
-                          Validée
-                        </span>
-                      )}
-                      {item.statut === 'REJETE' && (
-                        <span style={{ padding: '4px 10px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 700, backgroundColor: 'rgba(239, 68, 68, 0.15)', color: 'var(--accent-danger)' }}>
-                          Rejetée
-                        </span>
-                      )}
-                    </td>
-
-                    {/* Actions */}
-                    <td className="p-4 text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button 
-                          variant="secondary" 
-                          style={{ padding: '0.4rem 0.75rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                          onClick={() => setSelectedInscription(item)}
-                          title="Examiner le dossier complet"
-                        >
-                          <Eye size={15} /> Examiner
-                        </Button>
-                        
+                      {/* Statut Global */}
+                      <td className="p-3">
                         {item.statut === 'EN_ATTENTE' && (
-                          <>
-                            <Button 
-                              variant="primary" 
-                              style={{ padding: '0.4rem 0.75rem', backgroundColor: 'var(--accent-success)', borderColor: 'var(--accent-success)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                              onClick={() => handleValidate(item)}
-                              title="Valider et intégrer directement aux athlètes"
-                            >
-                              <CheckCircle size={15} /> Valider
-                            </Button>
-                            <Button 
-                              variant="secondary" 
-                              style={{ padding: '0.4rem 0.75rem', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.25)' }}
-                              onClick={() => openRejectionModal(item)}
-                              title="Rejeter le dossier"
-                            >
-                              <XCircle size={15} />
-                            </Button>
-                          </>
+                          <span style={{ padding: '3px 8px', borderRadius: '10px', fontSize: '0.72rem', fontWeight: 700, backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b' }}>
+                            En Attente
+                          </span>
                         )}
+                        {item.statut === 'VALIDE' && (
+                          <span style={{ padding: '3px 8px', borderRadius: '10px', fontSize: '0.72rem', fontWeight: 700, backgroundColor: 'rgba(16, 185, 129, 0.15)', color: 'var(--accent-success)' }}>
+                            Validée
+                          </span>
+                        )}
+                        {item.statut === 'REJETE' && (
+                          <span style={{ padding: '3px 8px', borderRadius: '10px', fontSize: '0.72rem', fontWeight: 700, backgroundColor: 'rgba(239, 68, 68, 0.15)', color: 'var(--accent-danger)' }}>
+                            Rejetée
+                          </span>
+                        )}
+                      </td>
 
-                        <Button 
-                          variant="secondary" 
-                          style={{ padding: '0.4rem 0.75rem', color: 'var(--text-muted)' }}
-                          onClick={() => {
-                            if (window.confirm("Supprimer définitivement cette demande d'inscription ?")) {
-                              deleteInscription(item.id);
-                            }
-                          }}
-                          title="Supprimer la demande"
-                        >
-                          <Trash2 size={15} />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      {/* Actions */}
+                      <td className="p-3 text-right">
+                        <div className="flex justify-end gap-1.5">
+                          <Button 
+                            variant="secondary" 
+                            style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                            onClick={() => setSelectedInscription(item)}
+                            title="Examiner le dossier complet et les pièces justificatives"
+                          >
+                            <Eye size={14} /> Examiner
+                          </Button>
+                          
+                          {item.statut === 'EN_ATTENTE' && (
+                            <>
+                              <Button 
+                                variant="primary" 
+                                style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem', backgroundColor: 'var(--accent-success)', borderColor: 'var(--accent-success)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                onClick={() => handleSingleValidate(item)}
+                                title="Valider et intégrer directement avec Badge QR"
+                              >
+                                <CheckCircle size={14} /> Valider
+                              </Button>
+                              <Button 
+                                variant="secondary" 
+                                style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.25)' }}
+                                onClick={() => setRejectionModal({ isOpen: true, inscriptionIds: [item.id], athleteName: `${item.nom?.toUpperCase()} ${item.prenom}`, motif: 'Certificat médical non conforme ou illisible' })}
+                                title="Rejeter le dossier"
+                              >
+                                <XCircle size={14} />
+                              </Button>
+                            </>
+                          )}
+
+                          <Button 
+                            variant="secondary" 
+                            style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}
+                            onClick={() => {
+                              if (window.confirm("Supprimer définitivement ce dossier d'inscription ?")) {
+                                deleteInscription(item.id);
+                              }
+                            }}
+                            title="Supprimer"
+                          >
+                            <Trash2 size={14} />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -496,7 +731,7 @@ CREATE POLICY "Admins can delete inscriptions" ON public.inscriptions FOR DELETE
           backdropFilter: 'blur(5px)'
         }}>
           <div className="glass-panel" style={{
-            width: '850px',
+            width: '860px',
             maxWidth: '96vw',
             maxHeight: '94vh',
             display: 'flex',
@@ -539,10 +774,10 @@ CREATE POLICY "Admins can delete inscriptions" ON public.inscriptions FOR DELETE
                     {selectedInscription.photo ? (
                       <img src={selectedInscription.photo} alt="Photo profil" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     ) : (
-                      <div className="text-muted text-xs p-2">Aucune photo fournie</div>
+                      <div className="text-danger text-xs p-2 font-semibold">Photo non fournie ❌</div>
                     )}
                   </div>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Photo d'identité (Badge)</span>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Photo d'identité (Badge QR)</span>
                 </div>
 
                 {/* Données personnelles */}
@@ -559,11 +794,18 @@ CREATE POLICY "Admins can delete inscriptions" ON public.inscriptions FOR DELETE
                   <div className="grid grid-cols-2 gap-3 mt-4 text-sm" style={{ backgroundColor: 'rgba(255,255,255,0.03)', padding: '12px', borderRadius: '8px' }}>
                     <div>
                       <span className="text-muted block text-xs">Date de Naissance :</span>
-                      <strong>{selectedInscription.date_naissance ? new Date(selectedInscription.date_naissance).toLocaleDateString('fr-FR') : '-'} ({selectedInscription.sexe})</strong>
+                      <strong>
+                        {selectedInscription.date_naissance ? new Date(selectedInscription.date_naissance).toLocaleDateString('fr-FR') : '-'}
+                        {calculateAge(selectedInscription.date_naissance) !== null && (
+                          <span style={{ color: '#10b981', marginLeft: '4px' }}>({calculateAge(selectedInscription.date_naissance)} ans)</span>
+                        )}
+                      </strong>
                     </div>
                     <div>
                       <span className="text-muted block text-xs">Téléphone :</span>
-                      <strong>{selectedInscription.telephone}</strong>
+                      <a href={`tel:${selectedInscription.telephone}`} style={{ color: '#818cf8', fontWeight: 700, textDecoration: 'none' }}>
+                        {selectedInscription.telephone}
+                      </a>
                     </div>
                     <div>
                       <span className="text-muted block text-xs">Contact Parent / Tuteur :</span>
@@ -580,14 +822,14 @@ CREATE POLICY "Admins can delete inscriptions" ON public.inscriptions FOR DELETE
               {/* Pièces Justificatives */}
               <div className="mb-6">
                 <h4 style={{ margin: '0 0 10px', fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                  Documents Justificatifs Joints
+                  Pièces Justificatives Joints
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Certificat Médical */}
-                  <div style={{ padding: '14px', borderRadius: '10px', backgroundColor: 'rgba(30, 41, 59, 0.5)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  <div style={{ padding: '14px', borderRadius: '10px', backgroundColor: 'rgba(30, 41, 59, 0.5)', border: `1px solid ${selectedInscription.certificat_medical ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}` }}>
                     <div className="flex justify-between items-center mb-2">
                       <span className="font-semibold text-sm flex items-center gap-2">
-                        <HeartPulse size={16} color="#10b981" /> Certificat Médical
+                        <HeartPulse size={16} color={selectedInscription.certificat_medical ? '#10b981' : '#ef4444'} /> Certificat Médical
                       </span>
                       {selectedInscription.certificat_medical ? (
                         <Button 
@@ -598,11 +840,11 @@ CREATE POLICY "Admins can delete inscriptions" ON public.inscriptions FOR DELETE
                           <Eye size={13} /> Visualiser
                         </Button>
                       ) : (
-                        <span className="text-danger text-xs font-semibold">Non fourni</span>
+                        <span className="text-danger text-xs font-bold">Non fourni ❌</span>
                       )}
                     </div>
                     <span className="text-xs text-muted block">
-                      {selectedInscription.certificat_medical ? 'Document téléversé par l\'adhérent' : 'À exiger lors de la remise du badge physique'}
+                      {selectedInscription.certificat_medical ? 'Document téléversé par le candidat' : 'Obligatoire avant délivrance du badge officiel'}
                     </span>
                   </div>
 
@@ -610,7 +852,7 @@ CREATE POLICY "Admins can delete inscriptions" ON public.inscriptions FOR DELETE
                   <div style={{ padding: '14px', borderRadius: '10px', backgroundColor: 'rgba(30, 41, 59, 0.5)', border: '1px solid rgba(255,255,255,0.08)' }}>
                     <div className="flex justify-between items-center mb-2">
                       <span className="font-semibold text-sm flex items-center gap-2">
-                        <ShieldCheck size={16} color="#f59e0b" /> Autorisation Parentale
+                        <ShieldCheck size={16} color={selectedInscription.autorisation_parentale ? '#10b981' : '#f59e0b'} /> Autorisation Parentale
                       </span>
                       {selectedInscription.autorisation_parentale ? (
                         <Button 
@@ -621,15 +863,71 @@ CREATE POLICY "Admins can delete inscriptions" ON public.inscriptions FOR DELETE
                           <Eye size={13} /> Visualiser
                         </Button>
                       ) : (
-                        <span className="text-muted text-xs">Non requise / Non fournie</span>
+                        <span className="text-muted text-xs">Non fournie</span>
                       )}
                     </div>
                     <span className="text-xs text-muted block">
-                      {selectedInscription.autorisation_parentale ? 'Document d\'autorisation disponible' : 'Pour les athlètes mineurs'}
+                      {selectedInscription.autorisation_parentale ? 'Document d\'autorisation disponible' : 'Requise pour les athlètes de moins de 18 ans'}
                     </span>
                   </div>
                 </div>
               </div>
+
+              {/* 3. OPTION DE PAIEMENT LORS DE LA VALIDATION */}
+              {selectedInscription.statut === 'EN_ATTENTE' && (
+                <div className="mb-6 p-4 rounded-xl" style={{ backgroundColor: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                  <div className="flex items-center justify-between mb-3">
+                    <label className="flex items-center gap-2 font-bold text-sm text-white cursor-pointer">
+                      <input 
+                        type="checkbox"
+                        checked={paymentForm.isPaid}
+                        onChange={(e) => setPaymentForm(prev => ({ ...prev, isPaid: e.target.checked }))}
+                        style={{ width: '16px', height: '16px', accentColor: '#10b981', cursor: 'pointer' }}
+                      />
+                      <span>Encaisser et enregistrer le règlement de la cotisation (3 000 DA)</span>
+                    </label>
+                    <span style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: 600 }}>Active immédiatement la carte d'accès</span>
+                  </div>
+
+                  {paymentForm.isPaid && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
+                      <div>
+                        <label className="form-label text-xs font-semibold">Montant payé (DA)</label>
+                        <input 
+                          type="number"
+                          value={paymentForm.montant}
+                          onChange={(e) => setPaymentForm(prev => ({ ...prev, montant: e.target.value }))}
+                          className="form-input"
+                          style={{ fontSize: '0.85rem' }}
+                        />
+                      </div>
+                      <div>
+                        <label className="form-label text-xs font-semibold">Mode de règlement</label>
+                        <select 
+                          value={paymentForm.modePaiement}
+                          onChange={(e) => setPaymentForm(prev => ({ ...prev, modePaiement: e.target.value }))}
+                          className="form-select"
+                          style={{ fontSize: '0.85rem' }}
+                        >
+                          <option value="Espèces">Espèces</option>
+                          <option value="Virement">Virement</option>
+                          <option value="Chèque">Chèque</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="form-label text-xs font-semibold">Période couverte jusqu'au</label>
+                        <input 
+                          type="date"
+                          value={paymentForm.periodeFin}
+                          onChange={(e) => setPaymentForm(prev => ({ ...prev, periodeFin: e.target.value }))}
+                          className="form-input"
+                          style={{ fontSize: '0.85rem' }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Remarques médicales & Loi 18-07 */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -639,17 +937,9 @@ CREATE POLICY "Admins can delete inscriptions" ON public.inscriptions FOR DELETE
                 </div>
                 <div style={{ padding: '12px', borderRadius: '8px', backgroundColor: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
                   <span className="text-success block text-xs mb-1 font-semibold">Conformité Loi 18-07 :</span>
-                  <span className="text-xs text-slate-300">✔ Consentement explicite au traitement des données & acceptation du règlement intérieur validés.</span>
+                  <span className="text-xs text-slate-300">✔ Consentement explicite au traitement des données & acceptation du règlement validés.</span>
                 </div>
               </div>
-
-              {/* Motif de rejet si rejeté */}
-              {selectedInscription.statut === 'REJETE' && selectedInscription.motif_rejet && (
-                <div className="mt-4 p-3 rounded-lg" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
-                  <span className="text-danger font-semibold text-xs block mb-1">Motif du rejet :</span>
-                  <span className="text-sm text-red-200">{selectedInscription.motif_rejet}</span>
-                </div>
-              )}
             </div>
 
             {/* Modal Footer */}
@@ -663,16 +953,16 @@ CREATE POLICY "Admins can delete inscriptions" ON public.inscriptions FOR DELETE
                   <Button 
                     variant="secondary" 
                     style={{ color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.25)' }}
-                    onClick={() => openRejectionModal(selectedInscription)}
+                    onClick={() => setRejectionModal({ isOpen: true, inscriptionIds: [selectedInscription.id], athleteName: `${selectedInscription.nom?.toUpperCase()} ${selectedInscription.prenom}`, motif: 'Certificat médical non conforme ou illisible' })}
                   >
                     <XCircle size={16} /> Rejeter
                   </Button>
                   <Button 
                     variant="primary" 
-                    style={{ backgroundColor: 'var(--accent-success)', borderColor: 'var(--accent-success)' }}
-                    onClick={() => handleValidate(selectedInscription)}
+                    style={{ backgroundColor: 'var(--accent-success)', borderColor: 'var(--accent-success)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                    onClick={() => handleSingleValidate(selectedInscription)}
                   >
-                    <CheckCircle size={16} /> Valider l'inscription
+                    <CheckCircle size={16} /> Valider l'inscription & Générer Badge
                   </Button>
                 </div>
               )}
@@ -681,7 +971,7 @@ CREATE POLICY "Admins can delete inscriptions" ON public.inscriptions FOR DELETE
         </div>
       )}
 
-      {/* MODALE DE SAISIE DU MOTIF DE REJET */}
+      {/* MODALE DE REJET (INDIVIDUEL OU BULK) */}
       {rejectionModal.isOpen && (
         <div style={{
           position: 'fixed',
@@ -699,17 +989,17 @@ CREATE POLICY "Admins can delete inscriptions" ON public.inscriptions FOR DELETE
               <AlertTriangle size={20} /> Rejeter la demande d'inscription
             </h3>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
-              Candidat : <strong>{rejectionModal.athleteName}</strong>
+              Dossier : <strong>{rejectionModal.athleteName}</strong>
             </p>
 
             <div className="mb-4">
-              <label className="form-label text-sm font-semibold">Motif du rejet (Explication pour le secrétariat) :</label>
+              <label className="form-label text-sm font-semibold">Motif du rejet :</label>
               <textarea 
                 rows={3} 
                 value={rejectionModal.motif}
                 onChange={(e) => setRejectionModal(prev => ({ ...prev, motif: e.target.value }))}
                 className="form-input"
-                placeholder="Indiquez pourquoi ce dossier ne peut pas être accepté (ex: Certificat médical illisible, Pièce manquante...)"
+                placeholder="Indiquez pourquoi ce dossier ne peut pas être accepté..."
                 style={{ resize: 'vertical' }}
               />
             </div>
@@ -717,7 +1007,7 @@ CREATE POLICY "Admins can delete inscriptions" ON public.inscriptions FOR DELETE
             <div className="flex justify-end gap-3">
               <Button 
                 variant="secondary" 
-                onClick={() => setRejectionModal({ isOpen: false, inscriptionId: null, athleteName: '', motif: '' })}
+                onClick={() => setRejectionModal({ isOpen: false, inscriptionIds: [], athleteName: '', motif: '' })}
               >
                 Annuler
               </Button>
@@ -733,7 +1023,7 @@ CREATE POLICY "Admins can delete inscriptions" ON public.inscriptions FOR DELETE
         </div>
       )}
 
-      {/* VISIONNEUSE DE DOCUMENT (CERTIFICAT / AUTORISATION) */}
+      {/* VISIONNEUSE DE DOCUMENTS */}
       {documentViewer.isOpen && (
         <div style={{
           position: 'fixed',
@@ -767,7 +1057,7 @@ CREATE POLICY "Admins can delete inscriptions" ON public.inscriptions FOR DELETE
         </div>
       )}
 
-      {/* MODALE D'APERÇU DU BADGE QR APRÈS VALIDATION */}
+      {/* MODALE DU BADGE QR APRÈS VALIDATION */}
       {validatedAthleteBadge && (
         <div style={{
           position: 'fixed',
@@ -785,14 +1075,14 @@ CREATE POLICY "Admins can delete inscriptions" ON public.inscriptions FOR DELETE
               <CheckCircle size={32} />
             </div>
             <h3 style={{ margin: '0 0 4px', fontSize: '1.2rem', fontWeight: 800, color: '#fff' }}>
-              Athlète Validé & Carte Créée !
+              Athlète Validé & Carte d'Accès Créée !
             </h3>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
               {validatedAthleteBadge.nom?.toUpperCase()} {validatedAthleteBadge.prenom} a été intégré. Voici son Badge QR officiel prêt à être imprimé.
             </p>
 
             <div style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'center' }}>
-              <BadgeGenerator athlete={validatedAthleteBadge} showEndDate={false} />
+              <BadgeGenerator athlete={validatedAthleteBadge} showEndDate={true} />
             </div>
 
             <div className="flex justify-center gap-3">

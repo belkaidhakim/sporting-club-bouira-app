@@ -59,7 +59,7 @@ export function useInscriptions() {
   const pendingCount = inscriptions.filter(i => i.statut === 'EN_ATTENTE').length;
 
   // Valider une inscription et créer l'athlète correspondant
-  const validerInscription = async (inscription) => {
+  const validerInscription = async (inscription, paymentOptions = null) => {
     const toastId = toast.loading("Validation et intégration de l'athlète...");
     try {
       // 1. Générer token QR unique
@@ -90,7 +90,28 @@ export function useInscriptions() {
 
       if (athleteError) throw athleteError;
 
-      // 3. Mettre à jour le statut dans inscriptions
+      // 3. Si paiement enregistré lors de la validation
+      if (paymentOptions && paymentOptions.isPaid) {
+        try {
+          const endDate = paymentOptions.periodeFin || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+          await supabase.from('cotisations').insert([{
+            athlete_id: newAthlete.id,
+            montant_paye: Number(paymentOptions.montant) || 3000,
+            mode_paiement: paymentOptions.modePaiement || 'Espèces',
+            periode_couverte_fin: endDate
+          }]);
+
+          await supabase.from('cartes_acces').upsert([{
+            athlete_id: newAthlete.id,
+            statut: 'ACTIVE',
+            date_dernier_paiement: new Date().toISOString()
+          }]);
+        } catch (payErr) {
+          console.warn('Erreur enregistrement paiement automatique:', payErr);
+        }
+      }
+
+      // 4. Mettre à jour le statut dans inscriptions
       const { error: updateError } = await supabase
         .from('inscriptions')
         .update({
@@ -101,7 +122,22 @@ export function useInscriptions() {
 
       if (updateError) console.warn('Warning mise à jour statut inscription:', updateError);
 
-      // 4. Mettre à jour l'état local
+      // Mettre à jour le stockage local si présent
+      try {
+        const stored = localStorage.getItem('local_inscriptions_backup');
+        if (stored) {
+          const list = JSON.parse(stored).map(item => 
+            item.id === inscription.id || item.numero_dossier === inscription.numero_dossier 
+              ? { ...item, statut: 'VALIDE', date_traitement: new Date().toISOString() } 
+              : item
+          );
+          localStorage.setItem('local_inscriptions_backup', JSON.stringify(list));
+        }
+      } catch (e) {
+        console.warn('Local update error:', e);
+      }
+
+      // 5. Mettre à jour l'état local
       setInscriptions(prev => prev.map(item => 
         item.id === inscription.id 
           ? { ...item, statut: 'VALIDE', date_traitement: new Date().toISOString() } 
@@ -110,13 +146,54 @@ export function useInscriptions() {
 
       toast.dismiss(toastId);
       toast.success(`Inscription validée ! ${athletePayload.nom} ${athletePayload.prenom} a été ajouté aux athlètes.`);
-      return newAthlete;
+      return { ...newAthlete, cotisations: paymentOptions?.isPaid ? [{ periode_couverte_fin: paymentOptions.periodeFin }] : [] };
     } catch (err) {
       toast.dismiss(toastId);
       console.error('Erreur validation inscription:', err);
       toast.error('Erreur lors de la validation : ' + err.message);
       return null;
     }
+  };
+
+  // Validation en masse
+  const validerMultipleInscriptions = async (inscriptionsList) => {
+    if (!inscriptionsList || inscriptionsList.length === 0) return 0;
+    const toastId = toast.loading(`Validation de ${inscriptionsList.length} dossier(s) en cours...`);
+    let validatedCount = 0;
+
+    for (const item of inscriptionsList) {
+      try {
+        const token_qr = `SCB-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+        const athletePayload = {
+          nom: (item.nom || '').trim().toUpperCase(),
+          prenom: (item.prenom || '').trim(),
+          date_naissance: item.date_naissance || null,
+          sexe: item.sexe || null,
+          telephone: item.telephone || null,
+          contact_urgence: item.telephone_parent || null,
+          observations_medicales: item.observations_medicales || null,
+          groupe_id: item.groupe_id || null,
+          groupe: item.groupes?.nom || item.groupe_nom || null,
+          certificat_medical_valide: true,
+          photo: item.photo || null,
+          token_qr: token_qr,
+          est_actif: true
+        };
+
+        const { error: insErr } = await supabase.from('athletes').insert([athletePayload]);
+        if (!insErr) {
+          await supabase.from('inscriptions').update({ statut: 'VALIDE', date_traitement: new Date().toISOString() }).eq('id', item.id);
+          validatedCount++;
+        }
+      } catch (err) {
+        console.warn('Erreur validation item en lot:', err);
+      }
+    }
+
+    fetchInscriptions();
+    toast.dismiss(toastId);
+    toast.success(`${validatedCount} dossier(s) validé(s) et intégrés avec succès !`);
+    return validatedCount;
   };
 
   // Rejeter une inscription avec motif
@@ -179,6 +256,7 @@ export function useInscriptions() {
     isTableMissing,
     fetchInscriptions,
     validerInscription,
+    validerMultipleInscriptions,
     rejeterInscription,
     deleteInscription
   };
