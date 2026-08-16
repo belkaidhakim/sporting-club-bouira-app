@@ -148,9 +148,9 @@ export default function FinancialDashboard() {
     const totalRev = cotisations.reduce((sum, c) => sum + Number(c.montant_paye), 0);
     const totalDep = depenses.reduce((sum, d) => sum + Number(d.montant), 0);
     
-    // Ventilation Frais d'inscription vs Cotisations
+    // Ventilation Frais d'inscription (300 DA ou 3 300 DA) vs Cotisations
     const totalFraisInscription = cotisations
-      .filter(c => Number(c.montant_paye) === 3000)
+      .filter(c => Number(c.montant_paye) === 300 || Number(c.montant_paye) === 3300)
       .reduce((sum, c) => sum + Number(c.montant_paye), 0);
     const totalCotisationsRegulieres = totalRev - totalFraisInscription;
 
@@ -1266,9 +1266,13 @@ export default function FinancialDashboard() {
                       <td className="p-4">{new Date(cotis.date_paiement).toLocaleDateString('fr-FR')}</td>
                       <td className="p-4 font-medium">{formatName(cotis.athletes?.nom, cotis.athletes?.prenom)}</td>
                       <td className="p-4">
-                        {Number(cotis.montant_paye) === 3000 ? (
+                        {Number(cotis.montant_paye) === 300 ? (
                           <span style={{ padding: '3px 10px', borderRadius: '12px', backgroundColor: 'rgba(99, 102, 241, 0.15)', color: '#818cf8', fontSize: '0.75rem', fontWeight: 700, border: '1px solid rgba(99, 102, 241, 0.3)' }}>
-                            Frais d'inscription
+                            Frais d'inscription (300 DA)
+                          </span>
+                        ) : Number(cotis.montant_paye) === 3300 ? (
+                          <span style={{ padding: '3px 10px', borderRadius: '12px', backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#10b981', fontSize: '0.75rem', fontWeight: 700, border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                            Inscription & Adhésion (3 300 DA)
                           </span>
                         ) : (
                           <span style={{ padding: '3px 10px', borderRadius: '12px', backgroundColor: 'rgba(16, 185, 129, 0.12)', color: 'var(--accent-success)', fontSize: '0.75rem', fontWeight: 600 }}>

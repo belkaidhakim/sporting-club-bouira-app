@@ -86,7 +86,7 @@ export default function PendingInscriptions() {
   // Option de paiement lors de la validation
   const [paymentForm, setPaymentForm] = useState({
     isPaid: true,
-    montant: 3000,
+    montant: 3300,
     modePaiement: 'Espèces',
     periodeFin: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   });
@@ -919,7 +919,7 @@ CREATE POLICY "Admins can delete inscriptions" ON public.inscriptions FOR DELETE
                         onChange={(e) => setPaymentForm(prev => ({ ...prev, isPaid: e.target.checked }))}
                         style={{ width: '16px', height: '16px', accentColor: '#10b981', cursor: 'pointer' }}
                       />
-                      <span>Encaisser et enregistrer le règlement de la cotisation (3 000 DA)</span>
+                      <span>Encaisser Frais d'inscription (300 DA) & Droits d'adhésion (3 000 DA) = 3 300 DA</span>
                     </label>
                     <span style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: 600 }}>Active immédiatement la carte d'accès</span>
                   </div>

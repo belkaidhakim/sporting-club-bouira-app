@@ -443,39 +443,55 @@ export default function PublicRegistration() {
 
       // SECTION 4 : FRAIS D'INSCRIPTION & DROITS D'ADHÉSION
       doc.setFillColor(248, 250, 252);
-      doc.roundedRect(18, 150, 174, 24, 3, 3, 'F');
+      doc.roundedRect(18, 148, 174, 26, 3, 3, 'F');
       doc.setDrawColor(203, 213, 225);
       doc.setLineWidth(0.4);
-      doc.roundedRect(18, 150, 174, 24, 3, 3, 'S');
+      doc.roundedRect(18, 148, 174, 26, 3, 3, 'S');
 
       doc.setFillColor(241, 245, 249);
-      doc.roundedRect(18, 150, 174, 7, 3, 3, 'F');
+      doc.roundedRect(18, 148, 174, 7, 3, 3, 'F');
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8);
       doc.setTextColor(15, 23, 42);
-      doc.text("FRAIS D'INSCRIPTION & DROITS D'ADHÉSION DU CLUB", 24, 155);
+      doc.text("FRAIS D'INSCRIPTION & DROITS D'ADHÉSION DU CLUB", 24, 153);
 
+      // Détail 1 : Frais d'inscription
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7.5);
       doc.setTextColor(100, 116, 139);
-      doc.text("MONTANT DES FRAIS :", 24, 163);
+      doc.text("FRAIS D'INSCRIPTION (Dossier & Badge) :", 24, 159.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text("300 DA", 88, 159.5);
+
+      // Détail 2 : Droits d'adhésion
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text("DROITS D'ADHÉSION / CLUB :", 112, 159.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text("3 000 DA", 166, 159.5);
+
+      // Ligne Total
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.3);
+      doc.line(24, 163, 186, 163);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(15, 23, 42);
+      doc.text("TOTAL À RÉGLER :", 24, 169);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(11);
       doc.setTextColor(16, 185, 129);
-      doc.text("3 000 DA", 68, 163);
+      doc.text("3 300 DA", 62, 169);
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7.5);
+      doc.setFontSize(7);
       doc.setTextColor(71, 85, 105);
-      doc.text("(Trois Mille Dinars Algériens · Adhésion & Badge)", 93, 163);
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
-      doc.setTextColor(100, 116, 139);
-      doc.text("STATUT DE RÈGLEMENT :", 24, 170);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
-      doc.setTextColor(217, 119, 6);
-      doc.text("À régler au secrétariat lors du dépôt final du dossier", 68, 170);
+      doc.text("(Trois Mille Trois Cents DA · Inscription : 300 DA + Adhésion : 3 000 DA)", 86, 169);
 
       // SECTION 5 : CONFORMITÉ LOI 18-07 & RÈGLEMENT
       doc.setFillColor(240, 253, 244);
@@ -533,7 +549,7 @@ export default function PublicRegistration() {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(6.5);
       doc.setTextColor(148, 163, 184);
-      doc.text("Reçu Frais : 3 000 DA", 116, 224);
+      doc.text("Reçu : 3 300 DA (300 DA + 3 000 DA)", 116, 224);
 
       // PIED DE PAGE
       doc.setDrawColor(226, 232, 240);
@@ -1235,25 +1251,31 @@ export default function PublicRegistration() {
                 </div>
               </div>
 
-              {/* SECTION 3 : FRAIS D'ADHÉSION & COTISATION */}
-              <div className="mb-8 p-4 rounded-xl flex items-center justify-between gap-4" style={{ backgroundColor: '#ecfdf5', border: '1.5px solid #a7f3d0' }}>
-                <div className="flex items-center gap-3">
-                  <div style={{ width: '42px', height: '42px', borderRadius: '10px', backgroundColor: '#d1fae5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Sparkles size={22} />
+              {/* SECTION 3 : FRAIS D'INSCRIPTION & DROITS D'ADHÉSION */}
+              <div className="mb-8 p-4 rounded-xl" style={{ backgroundColor: '#ecfdf5', border: '1.5px solid #a7f3d0' }}>
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="flex items-start gap-3">
+                    <div style={{ width: '42px', height: '42px', borderRadius: '10px', backgroundColor: '#d1fae5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '2px' }}>
+                      <Sparkles size={22} />
+                    </div>
+                    <div>
+                      <h4 style={{ margin: '0 0 4px', fontSize: '1rem', fontWeight: 800, color: '#065f46' }}>
+                        Détail des Frais & Droits d'Adhésion : 3 300 DA
+                      </h4>
+                      <div style={{ fontSize: '0.82rem', color: '#047857', lineHeight: '1.5' }}>
+                        • <strong>Frais d'inscription (Dossier & Badge QR) :</strong> 300 DA<br />
+                        • <strong>Droits d'adhésion du club :</strong> 3 000 DA (Licence & entraînements)
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#065f46' }}>
-                      Frais d'Adhésion & Inscription : 3 000 DA
-                    </h4>
-                    <span style={{ fontSize: '0.8rem', color: '#047857' }}>
-                      Comprend la licence sportive, les assurances, l'accès aux entraînements et la délivrance du Badge QR officiel.
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#059669' }}>
+                      Total : 3 300 DA
+                    </div>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#059669', backgroundColor: '#ffffff', padding: '3px 9px', borderRadius: '20px', border: '1px solid #a7f3d0', display: 'inline-block', marginTop: '3px' }}>
+                      À régler au secrétariat
                     </span>
                   </div>
-                </div>
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#059669', backgroundColor: '#ffffff', padding: '4px 10px', borderRadius: '20px', border: '1px solid #a7f3d0' }}>
-                    À régler au club
-                  </span>
                 </div>
               </div>
 
