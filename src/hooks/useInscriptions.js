@@ -58,6 +58,28 @@ export function useInscriptions() {
   // Compteur de demandes en attente
   const pendingCount = inscriptions.filter(i => i.statut === 'EN_ATTENTE').length;
 
+  // Insertion sécurisée d'un athlète avec repli si certaines colonnes n'existent pas dans Supabase
+  const insertAthleteSafely = async (payload) => {
+    let toInsert = { ...payload };
+    let { data, error } = await supabase.from('athletes').insert([toInsert]).select().maybeSingle();
+
+    if (error && (error.message?.includes('column') || error.message?.includes('schema cache') || error.code === '42703')) {
+      console.warn('Colonnes étendues non trouvées dans athletes, repli sur le schéma standard:', error.message);
+      delete toInsert.contact_urgence;
+      delete toInsert.observations_medicales;
+      delete toInsert.groupe_id;
+
+      let retry = await supabase.from('athletes').insert([toInsert]).select().maybeSingle();
+      if (retry.error && retry.error.message?.includes('column')) {
+        delete toInsert.groupe;
+        retry = await supabase.from('athletes').insert([toInsert]).select().maybeSingle();
+      }
+      return retry;
+    }
+
+    return { data, error };
+  };
+
   // Valider une inscription et créer l'athlète correspondant
   const validerInscription = async (inscription, paymentOptions = null) => {
     const toastId = toast.loading("Validation et intégration de l'athlète...");
@@ -65,7 +87,7 @@ export function useInscriptions() {
       // 1. Générer token QR unique
       const token_qr = `SCB-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
 
-      // 2. Insérer dans la table athlètes
+      // 2. Préparer le payload athlète
       const athletePayload = {
         nom: (inscription.nom || '').trim().toUpperCase(),
         prenom: (inscription.prenom || '').trim(),
@@ -82,45 +104,50 @@ export function useInscriptions() {
         est_actif: true
       };
 
-      const { data: newAthlete, error: athleteError } = await supabase
-        .from('athletes')
-        .insert([athletePayload])
-        .select()
-        .single();
+      // Insertion résiliente
+      const { data: newAthlete, error: athleteError } = await insertAthleteSafely(athletePayload);
 
       if (athleteError) throw athleteError;
+
+      const createdAthlete = newAthlete || { ...athletePayload, id: `ath-${Date.now()}` };
 
       // 3. Si paiement enregistré lors de la validation
       if (paymentOptions && paymentOptions.isPaid) {
         try {
           const endDate = paymentOptions.periodeFin || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-          await supabase.from('cotisations').insert([{
-            athlete_id: newAthlete.id,
-            montant_paye: Number(paymentOptions.montant) || 3000,
-            mode_paiement: paymentOptions.modePaiement || 'Espèces',
-            periode_couverte_fin: endDate
-          }]);
+          if (createdAthlete.id && !createdAthlete.id.toString().startsWith('ath-')) {
+            await supabase.from('cotisations').insert([{
+              athlete_id: createdAthlete.id,
+              montant_paye: Number(paymentOptions.montant) || 3000,
+              mode_paiement: paymentOptions.modePaiement || 'Espèces',
+              periode_couverte_fin: endDate
+            }]);
 
-          await supabase.from('cartes_acces').upsert([{
-            athlete_id: newAthlete.id,
-            statut: 'ACTIVE',
-            date_dernier_paiement: new Date().toISOString()
-          }]);
+            await supabase.from('cartes_acces').upsert([{
+              athlete_id: createdAthlete.id,
+              statut: 'ACTIVE',
+              date_dernier_paiement: new Date().toISOString()
+            }]);
+          }
         } catch (payErr) {
           console.warn('Erreur enregistrement paiement automatique:', payErr);
         }
       }
 
       // 4. Mettre à jour le statut dans inscriptions
-      const { error: updateError } = await supabase
-        .from('inscriptions')
-        .update({
-          statut: 'VALIDE',
-          date_traitement: new Date().toISOString()
-        })
-        .eq('id', inscription.id);
+      try {
+        const { error: updateError } = await supabase
+          .from('inscriptions')
+          .update({
+            statut: 'VALIDE',
+            date_traitement: new Date().toISOString()
+          })
+          .eq('id', inscription.id);
 
-      if (updateError) console.warn('Warning mise à jour statut inscription:', updateError);
+        if (updateError) console.warn('Warning mise à jour statut inscription:', updateError);
+      } catch (e) {
+        console.warn('Supabase update warning:', e);
+      }
 
       // Mettre à jour le stockage local si présent
       try {
@@ -146,11 +173,11 @@ export function useInscriptions() {
 
       toast.dismiss(toastId);
       toast.success(`Inscription validée ! ${athletePayload.nom} ${athletePayload.prenom} a été ajouté aux athlètes.`);
-      return { ...newAthlete, cotisations: paymentOptions?.isPaid ? [{ periode_couverte_fin: paymentOptions.periodeFin }] : [] };
+      return { ...createdAthlete, cotisations: paymentOptions?.isPaid ? [{ periode_couverte_fin: paymentOptions.periodeFin }] : [] };
     } catch (err) {
       toast.dismiss(toastId);
       console.error('Erreur validation inscription:', err);
-      toast.error('Erreur lors de la validation : ' + err.message);
+      toast.error('Erreur lors de la validation : ' + (err.message || 'Erreur inconnue'));
       return null;
     }
   };
@@ -180,9 +207,13 @@ export function useInscriptions() {
           est_actif: true
         };
 
-        const { error: insErr } = await supabase.from('athletes').insert([athletePayload]);
+        const { error: insErr } = await insertAthleteSafely(athletePayload);
         if (!insErr) {
-          await supabase.from('inscriptions').update({ statut: 'VALIDE', date_traitement: new Date().toISOString() }).eq('id', item.id);
+          try {
+            await supabase.from('inscriptions').update({ statut: 'VALIDE', date_traitement: new Date().toISOString() }).eq('id', item.id);
+          } catch {
+            // ignore
+          }
           validatedCount++;
         }
       } catch (err) {

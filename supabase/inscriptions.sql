@@ -84,7 +84,7 @@ CREATE POLICY "Admins can update club_settings"
   USING (true)
   WITH CHECK (true);
 
--- Initialisation du paramètre des inscriptions ouvertes par défaut
-INSERT INTO public.club_settings (key, value)
-VALUES ('inscriptions_ouvertes', '{"is_open": true}')
-ON CONFLICT (key) DO NOTHING;
+-- 6. Extension de la table athletes pour le contact d'urgence et les observations médicales
+ALTER TABLE public.athletes ADD COLUMN IF NOT EXISTS contact_urgence TEXT;
+ALTER TABLE public.athletes ADD COLUMN IF NOT EXISTS observations_medicales TEXT;
+ALTER TABLE public.athletes ADD COLUMN IF NOT EXISTS groupe_id UUID REFERENCES public.groupes(id) ON DELETE SET NULL;
