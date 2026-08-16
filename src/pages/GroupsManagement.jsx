@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { Card, Button, Skeleton } from '../components/ui';
-import { Users, Edit2, Plus, CalendarDays, Clock, Trash2, AlertTriangle, ScanLine } from 'lucide-react';
+import { Users, Edit2, Plus, CalendarDays, Clock, Trash2, AlertTriangle, ScanLine, Waves } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const parseHoraires = (horairesText) => {

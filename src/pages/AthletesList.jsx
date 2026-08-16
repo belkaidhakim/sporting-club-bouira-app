@@ -1,8 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Search, QrCode, Edit, Printer, Download, Upload, Trash2, Mail, MessageSquare, Send, CheckSquare, UserPlus } from 'lucide-react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { Plus, Search, QrCode, Edit, Printer, Download, Upload, Trash2, Mail, MessageSquare, Send, CheckSquare, UserPlus, Timer, Users, Award, Waves } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import BadgeGenerator from '../components/BadgeGenerator';
+import AthletePerformancesModal from '../components/AthletePerformancesModal';
+import { getSwimmingCategory, detectSiblingGroups } from '../utils/swimmingCategories';
 import toast from 'react-hot-toast';
 import Papa from 'papaparse';
 import { useAthletes } from '../hooks/useAthletes';
@@ -74,6 +76,7 @@ export default function AthletesList() {
   const { athletes, loading, fetchAthletes, archiveAthlete, toggleAccessStatus } = useAthletes();
   const { groupes } = useGroupes();
   const [selectedAthlete, setSelectedAthlete] = useState(null);
+  const [performanceAthlete, setPerformanceAthlete] = useState(null); // Modale de performances & chronos
   const [searchQuery, setSearchQuery] = useState('');
   const [groupFilter, setGroupFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -85,6 +88,9 @@ export default function AthletesList() {
   const [messageBody, setMessageBody] = useState("");
   const [messageTemplate, setMessageTemplate] = useState("horaire");
   const fileInputRef = useRef(null);
+
+  // Détection automatique des fratries et réductions familiales
+  const siblingMap = useMemo(() => detectSiblingGroups(athletes), [athletes]);
 
   const handleTemplateChange = (templateType) => {
     setMessageTemplate(templateType);
@@ -471,15 +477,33 @@ export default function AthletesList() {
                           <div>
                             <div className="font-semibold" style={{ color: 'var(--text-primary)' }}>{athlete.nom} {athlete.prenom}</div>
                             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{athlete.sexe || '-'} • {athlete.telephone || 'Sans tél'}</div>
+                            {siblingMap.has(athlete.id) && (
+                              <span style={{ marginTop: '2px', display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '1px 6px', borderRadius: '4px', fontSize: '0.68rem', fontWeight: 700, backgroundColor: 'rgba(99, 102, 241, 0.15)', color: '#818cf8' }}>
+                                👨‍👩‍👧‍👦 Fratrie ({siblingMap.get(athlete.id).siblingIndex}e enf.{siblingMap.get(athlete.id).discountPercent > 0 ? ` -${siblingMap.get(athlete.id).discountPercent}%` : ''})
+                              </span>
+                            )}
                           </div>
                         </div>
                       </td>
 
                       <td style={{ padding: '1rem' }}>
                         <div>
-                          <span style={{ padding: '2px 8px', borderRadius: '12px', backgroundColor: 'rgba(255,255,255,0.08)', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                            {category}
-                          </span>
+                          {(() => {
+                            const swimCat = getSwimmingCategory(athlete.date_naissance);
+                            return (
+                              <span style={{ 
+                                padding: '2px 8px', 
+                                borderRadius: '12px', 
+                                backgroundColor: swimCat.badgeBg, 
+                                fontSize: '0.75rem', 
+                                fontWeight: 700, 
+                                color: swimCat.color,
+                                border: `1px solid ${swimCat.color}35`
+                              }}>
+                                {swimCat.label}
+                              </span>
+                            );
+                          })()}
                           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '3px' }}>
                             {age !== null ? `${age} ans` : '-'} ({dateStr})
                           </div>
@@ -523,25 +547,35 @@ export default function AthletesList() {
                       </td>
 
                       <td style={{ padding: '1rem', textAlign: 'right' }}>
-                        <div className="flex justify-end gap-2">
+                        <div className="flex justify-end gap-1.5">
+                          <Button 
+                            variant="secondary" 
+                            style={{ padding: '0.4rem 0.65rem', color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.3)' }}
+                            onClick={() => setPerformanceAthlete(athlete)}
+                            title="Suivi des chronos et temps de référence en natation"
+                          >
+                            <Timer size={15} /> Chronos
+                          </Button>
                           <Link to={`/athletes/edit/${athlete.id}`}>
-                            <Button variant="secondary" style={{ padding: '0.4rem 0.75rem' }}>
-                              <Edit size={16} /> Modifier
+                            <Button variant="secondary" style={{ padding: '0.4rem 0.65rem' }} title="Modifier la fiche athlète">
+                              <Edit size={15} />
                             </Button>
                           </Link>
                           <Button 
                             variant="secondary" 
-                            style={{ padding: '0.4rem 0.75rem' }}
+                            style={{ padding: '0.4rem 0.65rem' }}
                             onClick={() => setSelectedAthlete(athlete)}
+                            title="Générer / Imprimer le Badge QR"
                           >
-                            <QrCode size={16} /> Badge
+                            <QrCode size={15} />
                           </Button>
                           <Button 
                             variant="secondary" 
-                            style={{ padding: '0.4rem 0.75rem', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)' }}
+                            style={{ padding: '0.4rem 0.55rem', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)' }}
                             onClick={() => handleDelete(athlete.id)}
+                            title="Supprimer"
                           >
-                            <Trash2 size={16} />
+                            <Trash2 size={15} />
                           </Button>
                         </div>
                       </td>
@@ -835,6 +869,14 @@ export default function AthletesList() {
             ))}
           </div>
         </div>
+      )}
+
+      {/* MODALE DE SUIVI DES CHRONOS ET PERFORMANCES */}
+      {performanceAthlete && (
+        <AthletePerformancesModal
+          athlete={performanceAthlete}
+          onClose={() => setPerformanceAthlete(null)}
+        />
       )}
     </div>
   );
