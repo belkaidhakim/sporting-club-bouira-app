@@ -1,9 +1,12 @@
 import React from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { User, ShieldCheck } from 'lucide-react';
+import { User, ShieldCheck, Waves } from 'lucide-react';
+import { getSwimmingCategory } from '../utils/swimmingCategories';
 
 export default function BadgeGenerator({ athlete, showEndDate = false }) {
   if (!athlete) return null;
+
+  const category = getSwimmingCategory(athlete.date_naissance);
 
   let endDateStr = null;
   if (showEndDate && athlete.cotisations && athlete.cotisations.length > 0) {
@@ -146,20 +149,38 @@ export default function BadgeGenerator({ athlete, showEndDate = false }) {
             </div>
           </div>
 
-          <div>
-            <div style={{ color: '#64748b', fontSize: '0.625rem', fontWeight: 700, textTransform: 'uppercase', marginBottom: '2px' }}>Discipline / Groupe</div>
-            <span style={{ 
-              display: 'inline-block',
-              backgroundColor: 'rgba(79, 70, 229, 0.1)', 
-              color: '#4f46e5', 
-              border: '1px solid rgba(79, 70, 229, 0.25)',
-              padding: '2px 8px', 
-              borderRadius: '6px', 
-              fontSize: '0.75rem', 
-              fontWeight: 700 
-            }}>
-              {groupName}
-            </span>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '2px' }}>
+            <div>
+              <div style={{ color: '#64748b', fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', marginBottom: '2px' }}>Catégorie</div>
+              <span style={{ 
+                display: 'inline-block',
+                backgroundColor: category.badgeBg, 
+                color: category.color, 
+                border: `1px solid ${category.color}40`,
+                padding: '2px 8px', 
+                borderRadius: '6px', 
+                fontSize: '0.72rem', 
+                fontWeight: 800 
+              }}>
+                {category.label}
+              </span>
+            </div>
+
+            <div>
+              <div style={{ color: '#64748b', fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', marginBottom: '2px' }}>Groupe</div>
+              <span style={{ 
+                display: 'inline-block',
+                backgroundColor: 'rgba(79, 70, 229, 0.1)', 
+                color: '#4f46e5', 
+                border: '1px solid rgba(79, 70, 229, 0.25)',
+                padding: '2px 8px', 
+                borderRadius: '6px', 
+                fontSize: '0.72rem', 
+                fontWeight: 700 
+              }}>
+                {groupName}
+              </span>
+            </div>
           </div>
         </div>
         

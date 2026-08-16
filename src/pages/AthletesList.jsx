@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Plus, Search, QrCode, Edit, Printer, Download, Upload, Trash2, Mail, MessageSquare, Send, CheckSquare, UserPlus, Timer, Users, Award, Waves } from 'lucide-react';
+import { Plus, Search, QrCode, Edit, Printer, Download, Upload, Trash2, Mail, MessageSquare, Send, CheckSquare, UserPlus, Timer, Users, Award, Waves, FileText } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import BadgeGenerator from '../components/BadgeGenerator';
 import AthletePerformancesModal from '../components/AthletePerformancesModal';
 import { getSwimmingCategory, detectSiblingGroups } from '../utils/swimmingCategories';
+import { generateBadgeSheetPDF } from '../utils/badgeSheetPdfGenerator';
 import toast from 'react-hot-toast';
 import Papa from 'papaparse';
 import { useAthletes } from '../hooks/useAthletes';
@@ -150,6 +151,22 @@ export default function AthletesList() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const handleExportBadgeSheet = async (targetList = null) => {
+    const list = targetList || athletes.filter(a => selectedAthletes.includes(a.id));
+    if (!list || list.length === 0) {
+      toast.error('Sélectionnez au moins un athlète pour exporter la planche de badges.');
+      return;
+    }
+    const toastId = toast.loading(`Génération de la planche PDF (${list.length} badges CR80)...`);
+    try {
+      await generateBadgeSheetPDF(list, `Planche_Badges_SCB_${list.length}_membres.pdf`);
+      toast.success('Planche de badges générée avec succès ! 🖨️', { id: toastId });
+    } catch (err) {
+      console.error('Error generating badge sheet PDF:', err);
+      toast.error('Erreur lors de la génération de la planche PDF.', { id: toastId });
+    }
   };
 
   const handleImport = (e) => {
@@ -312,13 +329,21 @@ export default function AthletesList() {
             </button>
           </div>
 
-          <div className="flex flex-wrap gap-3 items-center">
+          <div className="flex flex-wrap gap-2 items-center">
+            <Button 
+              variant="secondary" 
+              onClick={() => handleExportBadgeSheet()}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 700, backgroundColor: 'rgba(16, 185, 129, 0.15)', color: 'var(--accent-success)', border: '1px solid rgba(16, 185, 129, 0.3)' }}
+            >
+              <Download size={16} /> 🖨️ Planche PDF Badges CR80 ({selectedAthletes.length})
+            </Button>
+
             <Button 
               variant="secondary" 
               onClick={() => setShowBulkPrint(true)}
               style={{ backgroundColor: 'rgba(255,255,255,0.08)', fontWeight: 600 }}
             >
-              <Printer size={16} /> Badges en lot ({selectedAthletes.length})
+              <Printer size={16} /> Aperçu ({selectedAthletes.length})
             </Button>
 
             <Button 
@@ -329,7 +354,7 @@ export default function AthletesList() {
               }}
               style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}
             >
-              <MessageSquare size={16} /> Communication Groupée (SMS / Email)
+              <MessageSquare size={16} /> Relance / Message ({selectedAthletes.length})
             </Button>
           </div>
         </div>

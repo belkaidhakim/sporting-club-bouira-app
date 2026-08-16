@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
 import jsPDF from 'jspdf';
 import toast from 'react-hot-toast';
-import { TrendingUp, Search, Download, AlertTriangle, FileText, Edit, TrendingDown, DollarSign, Trash2, Eye, Printer, X, Settings, Sliders, Coins, Sparkles, CheckCircle2 } from 'lucide-react';
+import { TrendingUp, Search, Download, AlertTriangle, FileText, Edit, TrendingDown, DollarSign, Trash2, Eye, Printer, X, Settings, Sliders, Coins, Sparkles, CheckCircle2, Users } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { z } from 'zod';
 import { useCotisations } from '../hooks/useCotisations';
@@ -12,6 +12,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Card, Button, Skeleton } from '../components/ui';
 import { formatDA, formatDZ, formatName } from '../utils/formatters';
 import { loadClubLogoBase64 } from '../utils/pdfHelpers';
+import { detectSiblingGroups } from '../utils/swimmingCategories';
 
 const paymentSchema = z.object({
   athlete_id: z.string().min(1, 'Veuillez sélectionner un athlète'),
@@ -94,6 +95,9 @@ export default function FinancialDashboard() {
   const [searchName, setSearchName] = useState('');
   const [filterMonth, setFilterMonth] = useState('all');
   const [filterYear, setFilterYear] = useState(new Date().getFullYear().toString());
+
+  // Détection des fratries pour l'application des réductions familiales
+  const siblingMap = useMemo(() => detectSiblingGroups(athletes), [athletes]);
 
   useEffect(() => {
     fetchCotisations();
@@ -1076,6 +1080,35 @@ export default function FinancialDashboard() {
           </div>
 
           <form onSubmit={handlePaymentSubmit}>
+            {/* Détection & Suggestion Réduction Fratrie */}
+            {formData.athlete_id && siblingMap.has(formData.athlete_id) && (() => {
+              const sib = siblingMap.get(formData.athlete_id);
+              const discountRate = sib.discountPercent;
+              const discountedCotis = Math.round(cotisationAdhesion * (1 - discountRate / 100));
+              return (
+                <div className="p-3 rounded-lg mb-4 flex flex-wrap items-center justify-between gap-2" style={{ backgroundColor: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.3)' }}>
+                  <div className="flex items-center gap-2">
+                    <span style={{ fontSize: '1.2rem' }}>👨‍👩‍👧‍👦</span>
+                    <div>
+                      <strong style={{ color: '#818cf8', fontSize: '0.85rem' }}>Fratrie Détectée ({sib.familyCount} enfants dans la famille)</strong>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        Cet athlète est le <strong>{sib.siblingIndex}e enfant</strong> · Réduction suggérée : <strong style={{ color: 'var(--accent-success)' }}>{discountRate > 0 ? `-${discountRate}%` : 'Plein tarif (1er)'}</strong>
+                      </div>
+                    </div>
+                  </div>
+                  {discountRate > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, montant_paye: discountedCotis }))}
+                      style={{ padding: '5px 12px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 800, backgroundColor: 'rgba(16, 185, 129, 0.2)', color: 'var(--accent-success)', border: '1px solid rgba(16, 185, 129, 0.4)', cursor: 'pointer' }}
+                    >
+                      Appliquer Tarif Fratrie -{discountRate}% ({formatDA(discountedCotis)})
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+
             <div className="grid md:grid-cols-2 gap-6 mb-6">
               <div className="form-group">
                 <label className="form-label">Athlète *</label>

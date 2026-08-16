@@ -590,21 +590,40 @@ export default function Dashboard() {
                         Certificat médical ou photo manquante (obligatoire en natation).
                       </p>
                       <div className="flex flex-col gap-2 max-h-40 overflow-y-auto pr-1">
-                        {stats.incompleteFiles.slice(0, 4).map(athlete => (
-                          <div key={athlete.id} className="flex justify-between items-center p-2 rounded-lg text-xs" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-                            <div>
-                              <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{athlete.nom} {athlete.prenom}</span>
-                              <div style={{ fontSize: '0.7rem', color: '#818cf8' }}>
-                                {athlete.missingCertif ? '❌ Sans Certificat' : '❌ Sans Photo'}
+                        {stats.incompleteFiles.slice(0, 5).map(athlete => {
+                          const wpPhone = formatWhatsAppPhone(athlete.telephone || athlete.telephone_tuteur);
+                          const docType = athlete.missingCertif ? 'certificat médical d\'aptitude' : 'photo d\'identité';
+                          const msgRelance = `Bonjour ${athlete.prenom}, votre dossier au Sporting Club Bouira est incomplet (${docType} manquant). Ce document est indispensable pour l'accès aux bassins. Merci de le transmettre au club dès que possible.`;
+
+                          return (
+                            <div key={athlete.id} className="flex justify-between items-center p-2 rounded-lg text-xs" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+                              <div>
+                                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{athlete.nom} {athlete.prenom}</span>
+                                <div style={{ fontSize: '0.7rem', color: '#818cf8' }}>
+                                  {athlete.missingCertif ? '❌ Sans Certificat' : '❌ Sans Photo'}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                {wpPhone && (
+                                  <a
+                                    href={`https://wa.me/${wpPhone}?text=${encodeURIComponent(msgRelance)}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    style={{ padding: '4px 6px', borderRadius: '6px', backgroundColor: 'rgba(37, 211, 102, 0.15)', color: '#25D366', display: 'flex', alignItems: 'center' }}
+                                    title="Relancer par WhatsApp"
+                                  >
+                                    <MessageCircle size={13} />
+                                  </a>
+                                )}
+                                <Link to={`/athletes/edit/${athlete.id}`} style={{ textDecoration: 'none' }}>
+                                  <button style={{ padding: '3px 7px', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 700, backgroundColor: 'rgba(99, 102, 241, 0.15)', color: '#818cf8', border: 'none', cursor: 'pointer' }}>
+                                    Compléter
+                                  </button>
+                                </Link>
                               </div>
                             </div>
-                            <Link to={`/athletes/edit/${athlete.id}`} style={{ textDecoration: 'none' }}>
-                              <button style={{ padding: '3px 7px', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 700, backgroundColor: 'rgba(99, 102, 241, 0.15)', color: '#818cf8', border: 'none', cursor: 'pointer' }}>
-                                Compléter
-                              </button>
-                            </Link>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
