@@ -10,6 +10,8 @@ import { useDepenses } from '../hooks/useDepenses';
 import { useClubPricing } from '../hooks/useClubPricing';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, Button, Skeleton } from '../components/ui';
+import { formatDA, formatDZ, formatName } from '../utils/formatters';
+import { loadClubLogoBase64 } from '../utils/pdfHelpers';
 
 const paymentSchema = z.object({
   athlete_id: z.string().min(1, 'Veuillez sélectionner un athlète'),
@@ -24,23 +26,6 @@ const depenseSchema = z.object({
   categorie: z.enum(['Équipement', 'Salaire', 'Loyer', 'Événement', 'Autre']),
   date_depense: z.string().min(1, 'Date requise'),
 });
-
-const formatDA = (val) => {
-  if (val === undefined || val === null || val === '') return '0 DA';
-  const num = Math.round(Number(val));
-  if (isNaN(num)) return '0 DA';
-  const formatted = num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-  return `${formatted} DA`;
-};
-const formatDZ = formatDA;
-
-const formatName = (nom = '', prenom = '') => {
-  const formattedNom = (nom || '').trim().toUpperCase();
-  const formattedPrenom = (prenom || '').trim()
-    .toLowerCase()
-    .replace(/(?:^|\s|-)\S/g, (char) => char.toUpperCase());
-  return `${formattedNom} ${formattedPrenom}`.trim() || 'Non renseigné';
-};
 
 export default function FinancialDashboard() {
   const { cotisations, loading: cotisLoading, fetchCotisations } = useCotisations();
@@ -502,50 +487,12 @@ export default function FinancialDashboard() {
     document.body.removeChild(link);
   };
 
-  let cachedLogoBase64 = null;
-
-  const loadLogoBase64 = () => {
-    if (cachedLogoBase64) return Promise.resolve(cachedLogoBase64);
-    return new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        resolve(null);
-      }, 500); // Timeout de sécurité 500ms max
-
-      try {
-        const img = new Image();
-        img.onload = () => {
-          clearTimeout(timer);
-          try {
-            const canvas = document.createElement('canvas');
-            canvas.width = img.naturalWidth || img.width || 120;
-            canvas.height = img.naturalHeight || img.height || 120;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0);
-            const dataUri = canvas.toDataURL('image/jpeg', 0.9);
-            cachedLogoBase64 = dataUri;
-            resolve(dataUri);
-          } catch {
-            resolve(null);
-          }
-        };
-        img.onerror = () => {
-          clearTimeout(timer);
-          resolve(null);
-        };
-        img.src = '/logo.jpg';
-      } catch {
-        clearTimeout(timer);
-        resolve(null);
-      }
-    });
-  };
-
   const generatePDFReceipt = async (cotisation, autoDownload = false) => {
     const toastId = toast.loading('Préparation du reçu...');
     try {
       let logoBase64 = null;
       try {
-        logoBase64 = await loadLogoBase64();
+        logoBase64 = await loadClubLogoBase64();
       } catch (e) {
         console.warn('Logo non chargé, continuation sans logo:', e);
       }

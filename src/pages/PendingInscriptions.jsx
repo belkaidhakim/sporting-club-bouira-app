@@ -32,34 +32,8 @@ import { Card, Button, Skeleton } from '../components/ui';
 import { useInscriptions } from '../hooks/useInscriptions';
 import { useRegistrationSettings } from '../hooks/useRegistrationSettings';
 import { useClubPricing } from '../hooks/useClubPricing';
+import { calculateAge, formatWhatsAppPhone, formatName, formatDA } from '../utils/formatters';
 import BadgeGenerator from '../components/BadgeGenerator';
-
-// Calcul précis de l'âge
-const calculateAge = (dateNaissance) => {
-  if (!dateNaissance) return null;
-  const birth = new Date(dateNaissance);
-  if (isNaN(birth.getTime())) return null;
-  const today = new Date();
-  let age = today.getFullYear() - birth.getFullYear();
-  const m = today.getMonth() - birth.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
-    age--;
-  }
-  return age;
-};
-
-// Nettoyage du numéro de téléphone pour lien WhatsApp algérien (+213)
-const formatWhatsAppPhone = (phone) => {
-  if (!phone) return null;
-  const cleaned = phone.replace(/[^0-9]/g, '');
-  if (cleaned.startsWith('0')) {
-    return `213${cleaned.substring(1)}`;
-  }
-  if (cleaned.startsWith('213')) {
-    return cleaned;
-  }
-  return `213${cleaned}`;
-};
 
 export default function PendingInscriptions() {
   const { 

@@ -28,63 +28,12 @@ import { Button } from '../components/ui';
 import { useGroupes } from '../hooks/useGroupes';
 import { useRegistrationSettings } from '../hooks/useRegistrationSettings';
 import { useClubPricing } from '../hooks/useClubPricing';
-
-// Masquage et formatage automatique du téléphone (ex: 05 50 12 34 56)
-const formatPhoneInput = (val = '') => {
-  const digits = val.replace(/\D/g, '').substring(0, 10);
-  const parts = [];
-  for (let i = 0; i < digits.length; i += 2) {
-    parts.push(digits.substring(i, i + 2));
-  }
-  return parts.join(' ');
-};
+import { formatDA, formatName, calculateAge, formatPhoneInput } from '../utils/formatters';
+import { compressImageFile } from '../utils/imageCompressor';
+import { loadClubLogoBase64 } from '../utils/pdfHelpers';
 
 const unformatPhone = (formatted = '') => {
   return formatted.replace(/\s+/g, '');
-};
-
-// Compression d'image côté client (Canvas)
-const compressImageFile = (file, maxWidth = 1000, maxHeight = 1200, quality = 0.75) => {
-  return new Promise((resolve) => {
-    if (!file.type.startsWith('image/')) {
-      // S'il s'agit d'un PDF, lire directement en Data URL
-      const reader = new FileReader();
-      reader.onload = (e) => resolve(e.target.result);
-      reader.onerror = () => resolve(null);
-      reader.readAsDataURL(file);
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        let width = img.width;
-        let height = img.height;
-        if (width > height) {
-          if (width > maxWidth) {
-            height = Math.round((height * maxWidth) / width);
-            width = maxWidth;
-          }
-        } else {
-          if (height > maxHeight) {
-            width = Math.round((width * maxHeight) / height);
-            height = maxHeight;
-          }
-        }
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL('image/jpeg', quality);
-        resolve(dataUrl);
-      };
-      img.onerror = () => resolve(null);
-      img.src = event.target.result;
-    };
-    reader.readAsDataURL(file);
-  });
 };
 
 // Schéma de validation Zod
@@ -213,44 +162,10 @@ export default function PublicRegistration() {
   };
 
   // Chargement sécurisé du logo pour le PDF
-  let cachedLogo = null;
-  const loadLogoBase64 = () => {
-    if (cachedLogo) return Promise.resolve(cachedLogo);
-    return new Promise((resolve) => {
-      const timer = setTimeout(() => resolve(null), 500);
-      try {
-        const img = new Image();
-        img.onload = () => {
-          clearTimeout(timer);
-          try {
-            const canvas = document.createElement('canvas');
-            canvas.width = img.naturalWidth || 120;
-            canvas.height = img.naturalHeight || 120;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0);
-            const uri = canvas.toDataURL('image/jpeg', 0.9);
-            cachedLogo = uri;
-            resolve(uri);
-          } catch {
-            resolve(null);
-          }
-        };
-        img.onerror = () => {
-          clearTimeout(timer);
-          resolve(null);
-        };
-        img.src = '/logo.jpg';
-      } catch {
-        clearTimeout(timer);
-        resolve(null);
-      }
-    });
-  };
-
   // Génération du PDF de la Fiche de Pré-Inscription
   const generateRegistrationPDF = async (data, numeroDossier) => {
     try {
-      const logoBase64 = await loadLogoBase64();
+      const logoBase64 = await loadClubLogoBase64();
       const doc = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
