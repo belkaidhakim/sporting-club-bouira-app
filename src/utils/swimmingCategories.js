@@ -51,7 +51,6 @@ export const detectSiblingGroups = (athletes = []) => {
     
     if (!nomClean && !phoneClean) return;
 
-    // Clé de regroupement familial
     const key = nomClean ? `NOM_${nomClean}` : `TEL_${phoneClean}`;
 
     if (!familyMap.has(key)) {
@@ -64,11 +63,9 @@ export const detectSiblingGroups = (athletes = []) => {
 
   familyMap.forEach((members, familyKey) => {
     if (members.length > 1) {
-      // Trier par date d'inscription ou âge
       const sorted = [...members].sort((a, b) => new Date(a.date_naissance || 0) - new Date(b.date_naissance || 0));
 
       sorted.forEach((member, index) => {
-        // Barème : 1er enfant = 0%, 2e = 10%, 3e et + = 20%
         let discountPercent = 0;
         if (index === 1) discountPercent = 10;
         else if (index >= 2) discountPercent = 20;
@@ -88,19 +85,44 @@ export const detectSiblingGroups = (athletes = []) => {
 };
 
 /**
- * Liste standard des épreuves officielles de natation en bassin
+ * Familles / Styles officiels de nage
+ */
+export const SWIMMING_STYLES = [
+  { id: 'NL', label: 'Nage Libre (Crawl)', short: 'Nage Libre', icon: '🏊', color: '#38bdf8' },
+  { id: 'DOS', label: 'Dos', short: 'Dos', icon: '🏊‍♂️', color: '#818cf8' },
+  { id: 'BRASSE', label: 'Brasse', short: 'Brasse', icon: '🐸', color: '#34d399' },
+  { id: 'PAP', label: 'Papillon', short: 'Papillon', icon: '🦋', color: '#fb923c' },
+  { id: '4N', label: '4 Nages (Medley)', short: '4 Nages', icon: '🏅', color: '#f43f5e' },
+];
+
+/**
+ * Liste standard des épreuves officielles de natation en bassin regroupées par style
  */
 export const SWIMMING_EVENTS = [
-  { id: '50_NL', label: '50m Nage Libre', nage: 'Nage Libre', distance: 50 },
-  { id: '100_NL', label: '100m Nage Libre', nage: 'Nage Libre', distance: 100 },
-  { id: '200_NL', label: '200m Nage Libre', nage: 'Nage Libre', distance: 200 },
-  { id: '400_NL', label: '400m Nage Libre', nage: 'Nage Libre', distance: 400 },
-  { id: '50_DOS', label: '50m Dos', nage: 'Dos', distance: 50 },
-  { id: '100_DOS', label: '100m Dos', nage: 'Dos', distance: 100 },
-  { id: '50_BRASSE', label: '50m Brasse', nage: 'Brasse', distance: 50 },
-  { id: '100_BRASSE', label: '100m Brasse', nage: 'Brasse', distance: 100 },
-  { id: '50_PAP', label: '50m Papillon', nage: 'Papillon', distance: 50 },
-  { id: '100_PAP', label: '100m Papillon', nage: 'Papillon', distance: 100 },
-  { id: '100_4N', label: '100m 4 Nages', nage: '4 Nages', distance: 100 },
-  { id: '200_4N', label: '200m 4 Nages', nage: '4 Nages', distance: 200 },
+  // Nage Libre
+  { id: '50_NL', label: '50m Nage Libre', shortLabel: '50m NL', nage: 'Nage Libre', styleId: 'NL', distance: 50 },
+  { id: '100_NL', label: '100m Nage Libre', shortLabel: '100m NL', nage: 'Nage Libre', styleId: 'NL', distance: 100 },
+  { id: '200_NL', label: '200m Nage Libre', shortLabel: '200m NL', nage: 'Nage Libre', styleId: 'NL', distance: 200 },
+  { id: '400_NL', label: '400m Nage Libre', shortLabel: '400m NL', nage: 'Nage Libre', styleId: 'NL', distance: 400 },
+  { id: '800_NL', label: '800m Nage Libre', shortLabel: '800m NL', nage: 'Nage Libre', styleId: 'NL', distance: 800 },
+  
+  // Dos
+  { id: '50_DOS', label: '50m Dos', shortLabel: '50m Dos', nage: 'Dos', styleId: 'DOS', distance: 50 },
+  { id: '100_DOS', label: '100m Dos', shortLabel: '100m Dos', nage: 'Dos', styleId: 'DOS', distance: 100 },
+  { id: '200_DOS', label: '200m Dos', shortLabel: '200m Dos', nage: 'Dos', styleId: 'DOS', distance: 200 },
+
+  // Brasse
+  { id: '50_BRASSE', label: '50m Brasse', shortLabel: '50m Brasse', nage: 'Brasse', styleId: 'BRASSE', distance: 50 },
+  { id: '100_BRASSE', label: '100m Brasse', shortLabel: '100m Brasse', nage: 'Brasse', styleId: 'BRASSE', distance: 100 },
+  { id: '200_BRASSE', label: '200m Brasse', shortLabel: '200m Brasse', nage: 'Brasse', styleId: 'BRASSE', distance: 200 },
+
+  // Papillon
+  { id: '50_PAP', label: '50m Papillon', shortLabel: '50m Pap', nage: 'Papillon', styleId: 'PAP', distance: 50 },
+  { id: '100_PAP', label: '100m Papillon', shortLabel: '100m Pap', nage: 'Papillon', styleId: 'PAP', distance: 100 },
+  { id: '200_PAP', label: '200m Papillon', shortLabel: '200m Pap', nage: 'Papillon', styleId: 'PAP', distance: 200 },
+
+  // 4 Nages
+  { id: '100_4N', label: '100m 4 Nages', shortLabel: '100m 4N', nage: '4 Nages', styleId: '4N', distance: 100 },
+  { id: '200_4N', label: '200m 4 Nages', shortLabel: '200m 4N', nage: '4 Nages', styleId: '4N', distance: 200 },
+  { id: '400_4N', label: '400m 4 Nages', shortLabel: '400m 4N', nage: '4 Nages', styleId: '4N', distance: 400 },
 ];

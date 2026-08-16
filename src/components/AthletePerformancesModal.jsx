@@ -33,7 +33,7 @@ import {
   ReferenceLine,
   Legend
 } from 'recharts';
-import { SWIMMING_EVENTS, getSwimmingCategory } from '../utils/swimmingCategories';
+import { SWIMMING_EVENTS, SWIMMING_STYLES, getSwimmingCategory } from '../utils/swimmingCategories';
 import { formatName, formatWhatsAppPhone } from '../utils/formatters';
 import { generateSwimmingReportPDF } from '../utils/swimmingReportPdfGenerator';
 import toast from 'react-hot-toast';
@@ -70,6 +70,7 @@ const formatSecondsToChrono = (sec) => {
 
 export default function AthletePerformancesModal({ athlete, onClose }) {
   const [performances, setPerformances] = useState([]);
+  const [selectedStyleId, setSelectedStyleId] = useState('NL'); // 'NL', 'DOS', 'BRASSE', 'PAP', '4N'
   const [selectedEventId, setSelectedEventId] = useState('50_NL');
   const [bassinFilter, setBassinFilter] = useState('all'); // 'all' | '25m' | '50m'
   const [contexteFilter, setContexteFilter] = useState('all'); // 'all' | 'Entraînement' | 'Compétition' | 'Test'
@@ -95,6 +96,21 @@ export default function AthletePerformancesModal({ athlete, onClose }) {
     return getSwimmingCategory(athlete?.date_naissance);
   }, [athlete]);
 
+  // Événements appartenant au style sélectionné
+  const currentStyleEvents = useMemo(() => {
+    return SWIMMING_EVENTS.filter(ev => ev.styleId === selectedStyleId);
+  }, [selectedStyleId]);
+
+  // Changer de style -> sélectionner automatiquement la 1ère distance du style
+  const handleSelectStyle = (styleId) => {
+    setSelectedStyleId(styleId);
+    const firstEvent = SWIMMING_EVENTS.find(ev => ev.styleId === styleId);
+    if (firstEvent) {
+      setSelectedEventId(firstEvent.id);
+      setFormData(prev => ({ ...prev, event_id: firstEvent.id }));
+    }
+  };
+
   // Charger les données de l'athlète
   useEffect(() => {
     if (!athlete?.id) return;
@@ -115,6 +131,14 @@ export default function AthletePerformancesModal({ athlete, onClose }) {
       setTargetGoalTime('');
     }
   }, [athlete, selectedEventId]);
+
+  // Synchroniser le style sélectionné si l'événement change
+  useEffect(() => {
+    const ev = SWIMMING_EVENTS.find(e => e.id === selectedEventId);
+    if (ev && ev.styleId !== selectedStyleId) {
+      setSelectedStyleId(ev.styleId);
+    }
+  }, [selectedEventId]);
 
   // Sauvegarder les objectifs cibles
   const handleSaveTarget = (val) => {
@@ -202,18 +226,16 @@ export default function AthletePerformancesModal({ athlete, onClose }) {
     return [...filteredEventPerfs].sort((a, b) => a.seconds - b.seconds)[0];
   }, [filteredEventPerfs]);
 
-  // Construction des données du graphique avec gestion des doublons de dates et moyenne mobile
+  // Construction des données du graphique
   const chartData = useMemo(() => {
     const dateCounts = {};
 
     return filteredEventPerfs.map((p, idx, arr) => {
       const baseDate = new Date(p.date_perf).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
       
-      // Indexation de session pour les doublons de dates
       dateCounts[baseDate] = (dateCounts[baseDate] || 0) + 1;
       const displayLabel = dateCounts[baseDate] > 1 ? `${baseDate} (#${dateCounts[baseDate]})` : baseDate;
 
-      // Calcul de la moyenne mobile sur les 3 derniers chronos
       const sliceStart = Math.max(0, idx - 2);
       const windowPerfs = arr.slice(sliceStart, idx + 1);
       const movingAvg = (windowPerfs.reduce((s, it) => s + it.seconds, 0) / windowPerfs.length).toFixed(2);
@@ -278,7 +300,7 @@ export default function AthletePerformancesModal({ athlete, onClose }) {
       backdropFilter: 'blur(8px)'
     }}>
       <div className="glass-panel" style={{
-        width: '940px',
+        width: '960px',
         maxWidth: '96vw',
         maxHeight: '94vh',
         display: 'flex',
@@ -297,7 +319,7 @@ export default function AthletePerformancesModal({ athlete, onClose }) {
             <div>
               <div className="flex items-center gap-2">
                 <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-                  Suivi Analytique des Chronos & Performances
+                  Suivi Analytique des Chronos
                 </h2>
                 <span style={{ 
                   padding: '2px 8px', 
@@ -318,7 +340,6 @@ export default function AthletePerformancesModal({ athlete, onClose }) {
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            {/* BOUTON EXPORT PDF BILAN */}
             <button
               onClick={handleExportPDF}
               className="btn-secondary"
@@ -336,7 +357,6 @@ export default function AthletePerformancesModal({ athlete, onClose }) {
               <Download size={14} /> Fiche Bilan PDF
             </button>
 
-            {/* BOUTON PARTAGE WHATSAPP PARENTS */}
             <button
               onClick={handleWhatsAppShare}
               style={{
@@ -357,7 +377,6 @@ export default function AthletePerformancesModal({ athlete, onClose }) {
               <Share2 size={14} /> WhatsApp Parents
             </button>
 
-            {/* BOUTON AJOUT CHRONO */}
             <button
               onClick={() => setShowAddForm(prev => !prev)}
               style={{
@@ -409,8 +428,12 @@ export default function AthletePerformancesModal({ athlete, onClose }) {
                       className="form-select text-xs"
                       required
                     >
-                      {SWIMMING_EVENTS.map(ev => (
-                        <option key={ev.id} value={ev.id}>{ev.label}</option>
+                      {SWIMMING_STYLES.map(style => (
+                        <optgroup key={style.id} label={`${style.icon} ${style.label}`}>
+                          {SWIMMING_EVENTS.filter(e => e.styleId === style.id).map(ev => (
+                            <option key={ev.id} value={ev.id}>{ev.label}</option>
+                          ))}
+                        </optgroup>
                       ))}
                     </select>
                   </div>
@@ -439,7 +462,6 @@ export default function AthletePerformancesModal({ athlete, onClose }) {
                   </div>
                 </div>
 
-                {/* Métriques spécifiques natation */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
                   <div>
                     <label className="form-label text-xs">Bassin</label>
@@ -543,37 +565,113 @@ export default function AthletePerformancesModal({ athlete, onClose }) {
             </div>
           )}
 
-          {/* BARRE DES ÉPREUVES */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-2 mb-4 scrollbar-none">
-            {SWIMMING_EVENTS.map(ev => {
-              const hasPerfs = performances.some(p => p.event_id === ev.id);
-              const isSelected = selectedEventId === ev.id;
-              return (
-                <button
-                  key={ev.id}
-                  onClick={() => setSelectedEventId(ev.id)}
-                  style={{
-                    padding: '0.4rem 0.85rem',
-                    borderRadius: '8px',
-                    fontSize: '0.78rem',
-                    fontWeight: 700,
-                    whiteSpace: 'nowrap',
-                    backgroundColor: isSelected ? 'rgba(56, 189, 248, 0.2)' : 'var(--bg-tertiary)',
-                    color: isSelected ? '#38bdf8' : 'var(--text-muted)',
-                    border: isSelected ? '1.5px solid rgba(56, 189, 248, 0.5)' : '1px solid var(--border-color)',
-                    cursor: 'pointer'
-                  }}
-                >
-                  {ev.label} {hasPerfs && <span style={{ color: '#34d399', marginLeft: '3px' }}>●</span>}
-                </button>
-              );
-            })}
+          {/* ======================================================== */}
+          {/* DISPOSITION STRUCTURÉE ET ERGONOMIQUE DES NAGES */}
+          {/* ======================================================== */}
+          <div className="p-3.5 rounded-2xl mb-4" style={{ backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)' }}>
+            
+            {/* LIGNE 1 : FAMILLES DE NAGES (ONGLETS PRINCIPAUX) */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-2 mb-3 border-b border-[rgba(255,255,255,0.06)] scrollbar-none">
+              <span className="text-xs text-muted font-bold mr-1" style={{ whiteSpace: 'nowrap' }}>
+                Nage :
+              </span>
+              {SWIMMING_STYLES.map(style => {
+                const isSelected = selectedStyleId === style.id;
+                // Nombre total de chronos enregistrés dans ce style
+                const perfsInStyle = performances.filter(p => {
+                  const ev = SWIMMING_EVENTS.find(e => e.id === p.event_id);
+                  return ev && ev.styleId === style.id;
+                }).length;
+
+                return (
+                  <button
+                    key={style.id}
+                    onClick={() => handleSelectStyle(style.id)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '0.45rem 1rem',
+                      borderRadius: '10px',
+                      fontSize: '0.82rem',
+                      fontWeight: 700,
+                      whiteSpace: 'nowrap',
+                      backgroundColor: isSelected ? `${style.color}25` : 'rgba(255,255,255,0.04)',
+                      color: isSelected ? style.color : 'var(--text-muted)',
+                      border: isSelected ? `1.5px solid ${style.color}` : '1px solid transparent',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    <span>{style.icon}</span>
+                    <span>{style.label}</span>
+                    {perfsInStyle > 0 && (
+                      <span style={{ 
+                        fontSize: '0.65rem', 
+                        padding: '1px 6px', 
+                        borderRadius: '9999px', 
+                        backgroundColor: isSelected ? style.color : 'rgba(255,255,255,0.1)',
+                        color: isSelected ? '#000' : 'var(--text-primary)',
+                        fontWeight: 800
+                      }}>
+                        {perfsInStyle}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* LIGNE 2 : DISTANCES DISPONIBLES DANS LE STYLE SÉLECTIONNÉ */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-muted font-bold mr-1">
+                Distance :
+              </span>
+              {currentStyleEvents.map(ev => {
+                const isSelected = selectedEventId === ev.id;
+                const eventPerfs = performances.filter(p => p.event_id === ev.id);
+                const bestChrono = eventPerfs.length > 0 
+                  ? [...eventPerfs].sort((a, b) => a.seconds - b.seconds)[0].chrono_str 
+                  : null;
+
+                return (
+                  <button
+                    key={ev.id}
+                    onClick={() => {
+                      setSelectedEventId(ev.id);
+                      setFormData(prev => ({ ...prev, event_id: ev.id }));
+                    }}
+                    style={{
+                      display: 'inline-flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '0.4rem 0.9rem',
+                      borderRadius: '8px',
+                      backgroundColor: isSelected ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255,255,255,0.03)',
+                      color: isSelected ? '#38bdf8' : 'var(--text-primary)',
+                      border: isSelected ? '1.5px solid #38bdf8' : '1px solid var(--border-color)',
+                      cursor: 'pointer',
+                      minWidth: '78px',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <span style={{ fontSize: '0.85rem', fontWeight: 800 }}>
+                      {ev.shortLabel}
+                    </span>
+                    <span style={{ fontSize: '0.65rem', color: bestChrono ? 'var(--accent-success)' : 'var(--text-muted)', fontWeight: 600, marginTop: '1px' }}>
+                      {bestChrono ? `PB: ${bestChrono}` : 'Aucun PB'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* BARRE DE FILTRES AVANCÉS (BASSIN 25M/50M & CONTEXTE) */}
           <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl mb-4" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)' }}>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-muted font-bold">🏊 Type de Bassin :</span>
+              <span className="text-xs text-muted font-bold">🏊 Bassin :</span>
               <div className="flex rounded-lg overflow-hidden border border-[rgba(255,255,255,0.1)]">
                 <button
                   onClick={() => setBassinFilter('all')}
@@ -634,7 +732,6 @@ export default function AthletePerformancesModal({ athlete, onClose }) {
                 <option value="Test">⏱️ Tests</option>
               </select>
 
-              {/* Minima / Objectif de saison */}
               <button
                 onClick={() => setShowTargetInput(prev => !prev)}
                 style={{
@@ -757,7 +854,6 @@ export default function AthletePerformancesModal({ athlete, onClose }) {
                     ]}
                   />
                   
-                  {/* Ligne Record Personnel */}
                   {personalBest && (
                     <ReferenceLine 
                       y={personalBest.seconds} 
@@ -767,7 +863,6 @@ export default function AthletePerformancesModal({ athlete, onClose }) {
                     />
                   )}
 
-                  {/* Ligne Objectif Entraîneur / Minima */}
                   {targetGoalTime && parseFloat(targetGoalTime) > 0 && (
                     <ReferenceLine 
                       y={parseFloat(targetGoalTime)} 
@@ -784,7 +879,7 @@ export default function AthletePerformancesModal({ athlete, onClose }) {
             </div>
           )}
 
-          {/* TABLEAU DES CHRONOS ENRICHI DE TOUTES LES MÉTRIQUES */}
+          {/* TABLEAU DES CHRONOS ENRICHI */}
           <div className="table-responsive">
             <table style={{ width: '100%', fontSize: '0.82rem' }}>
               <thead>
@@ -812,7 +907,6 @@ export default function AthletePerformancesModal({ athlete, onClose }) {
                   [...filteredEventPerfs].reverse().map((perf, index, reversedArr) => {
                     const isPB = personalBest && personalBest.id === perf.id;
                     
-                    // Calcul du Delta avec le chrono précédent chronologique
                     const prevPerf = reversedArr[index + 1];
                     let delta = null;
                     if (prevPerf) {
