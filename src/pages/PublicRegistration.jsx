@@ -27,6 +27,7 @@ import {
 import { Button } from '../components/ui';
 import { useGroupes } from '../hooks/useGroupes';
 import { useRegistrationSettings } from '../hooks/useRegistrationSettings';
+import { useClubPricing } from '../hooks/useClubPricing';
 
 // Masquage et formatage automatique du téléphone (ex: 05 50 12 34 56)
 const formatPhoneInput = (val = '') => {
@@ -105,6 +106,7 @@ const registrationSchema = z.object({
 export default function PublicRegistration() {
   const { groupes } = useGroupes();
   const { isOpen: isRegistrationOpen, loading: settingsLoading } = useRegistrationSettings();
+  const { fraisInscription, cotisationAdhesion, totalAdhesion } = useClubPricing();
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submissionResult, setSubmissionResult] = useState(null);
@@ -463,7 +465,7 @@ export default function PublicRegistration() {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8.5);
       doc.setTextColor(15, 23, 42);
-      doc.text("300 DA", 88, 159.5);
+      doc.text(formatDA(fraisInscription), 88, 159.5);
 
       // Détail 2 : Droits d'adhésion
       doc.setFont('helvetica', 'bold');
@@ -473,7 +475,7 @@ export default function PublicRegistration() {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8.5);
       doc.setTextColor(15, 23, 42);
-      doc.text("3 000 DA", 166, 159.5);
+      doc.text(formatDA(cotisationAdhesion), 166, 159.5);
 
       // Ligne Total
       doc.setDrawColor(226, 232, 240);
@@ -487,11 +489,11 @@ export default function PublicRegistration() {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(11);
       doc.setTextColor(16, 185, 129);
-      doc.text("3 300 DA", 62, 169);
+      doc.text(formatDA(totalAdhesion), 62, 169);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7);
       doc.setTextColor(71, 85, 105);
-      doc.text("(Trois Mille Trois Cents DA · Inscription : 300 DA + Adhésion : 3 000 DA)", 86, 169);
+      doc.text(`(Frais Inscription : ${formatDA(fraisInscription)} + Droits d'Adhésion : ${formatDA(cotisationAdhesion)})`, 86, 169);
 
       // SECTION 5 : CONFORMITÉ LOI 18-07 & RÈGLEMENT
       doc.setFillColor(240, 253, 244);
@@ -549,7 +551,7 @@ export default function PublicRegistration() {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(6.5);
       doc.setTextColor(148, 163, 184);
-      doc.text("Reçu : 3 300 DA (300 DA + 3 000 DA)", 116, 224);
+      doc.text(`Reçu : ${formatDA(totalAdhesion)} (${formatDA(fraisInscription)} + ${formatDA(cotisationAdhesion)})`, 116, 224);
 
       // PIED DE PAGE
       doc.setDrawColor(226, 232, 240);
@@ -1260,17 +1262,17 @@ export default function PublicRegistration() {
                     </div>
                     <div>
                       <h4 style={{ margin: '0 0 4px', fontSize: '1rem', fontWeight: 800, color: '#065f46' }}>
-                        Détail des Frais & Droits d'Adhésion : 3 300 DA
+                        Détail des Frais & Droits d'Adhésion : {formatDA(totalAdhesion)}
                       </h4>
                       <div style={{ fontSize: '0.82rem', color: '#047857', lineHeight: '1.5' }}>
-                        • <strong>Frais d'inscription (Dossier & Badge QR) :</strong> 300 DA<br />
-                        • <strong>Droits d'adhésion du club :</strong> 3 000 DA (Licence & entraînements)
+                        • <strong>Frais d'inscription (Dossier & Badge QR) :</strong> {formatDA(fraisInscription)}<br />
+                        • <strong>Droits d'adhésion du club :</strong> {formatDA(cotisationAdhesion)} (Licence & entraînements)
                       </div>
                     </div>
                   </div>
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
                     <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#059669' }}>
-                      Total : 3 300 DA
+                      Total : {formatDA(totalAdhesion)}
                     </div>
                     <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#059669', backgroundColor: '#ffffff', padding: '3px 9px', borderRadius: '20px', border: '1px solid #a7f3d0', display: 'inline-block', marginTop: '3px' }}>
                       À régler au secrétariat

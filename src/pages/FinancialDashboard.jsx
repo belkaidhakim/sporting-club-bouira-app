@@ -2,11 +2,12 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
 import jsPDF from 'jspdf';
 import toast from 'react-hot-toast';
-import { TrendingUp, Search, Download, AlertTriangle, FileText, Edit, TrendingDown, DollarSign, Trash2, Eye, Printer, X } from 'lucide-react';
+import { TrendingUp, Search, Download, AlertTriangle, FileText, Edit, TrendingDown, DollarSign, Trash2, Eye, Printer, X, Settings, Sliders, Coins, Sparkles, CheckCircle2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { z } from 'zod';
 import { useCotisations } from '../hooks/useCotisations';
 import { useDepenses } from '../hooks/useDepenses';
+import { useClubPricing } from '../hooks/useClubPricing';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, Button, Skeleton } from '../components/ui';
 
@@ -45,11 +46,33 @@ export default function FinancialDashboard() {
   const { cotisations, loading: cotisLoading, fetchCotisations } = useCotisations();
   const { depenses, loading: depensesLoading, fetchDepenses } = useDepenses();
   const { user } = useAuth();
+  const { fraisInscription, cotisationAdhesion, totalAdhesion, updatePricing } = useClubPricing();
   
   const [athletes, setAthletes] = useState([]);
   const [, setLoading] = useState(true);
   
   const [activeTab, setActiveTab] = useState('revenus'); // 'revenus' or 'depenses'
+  const [filterRevenueType, setFilterRevenueType] = useState('all'); // 'all', 'inscriptions', 'cotisations'
+
+  // Modale de Configuration des Tarifs (Admin)
+  const [showPricingModal, setShowPricingModal] = useState(false);
+  const [pricingFormData, setPricingFormData] = useState({
+    frais_inscription: 300,
+    cotisation_adhesion: 3000
+  });
+
+  useEffect(() => {
+    setPricingFormData({
+      frais_inscription: fraisInscription,
+      cotisation_adhesion: cotisationAdhesion
+    });
+  }, [fraisInscription, cotisationAdhesion]);
+
+  const handleSavePricing = async (e) => {
+    e.preventDefault();
+    await updatePricing(pricingFormData);
+    setShowPricingModal(false);
+  };
   
   // Cotisation Form State
   const [showPaymentForm, setShowPaymentForm] = useState(false);
@@ -57,7 +80,7 @@ export default function FinancialDashboard() {
   const initialFormState = {
     athlete_id: '',
     montant_paye: '',
-    mode_paiement: 'Virement',
+    mode_paiement: 'Espèces',
     periode_couverte_fin: ''
   };
   const [formData, setFormData] = useState(initialFormState);
@@ -107,8 +130,21 @@ export default function FinancialDashboard() {
     if (filterYear !== 'all') {
       result = result.filter(c => new Date(c.date_paiement).getFullYear() === parseInt(filterYear));
     }
+    if (filterRevenueType === 'inscriptions') {
+      result = result.filter(c => 
+        Number(c.montant_paye) === fraisInscription || 
+        Number(c.montant_paye) === totalAdhesion || 
+        Number(c.montant_paye) === 300 || 
+        Number(c.montant_paye) === 3300
+      );
+    } else if (filterRevenueType === 'cotisations') {
+      result = result.filter(c => 
+        Number(c.montant_paye) !== fraisInscription && 
+        Number(c.montant_paye) !== 300
+      );
+    }
     return result;
-  }, [cotisations, searchName, filterMonth, filterYear]);
+  }, [cotisations, searchName, filterMonth, filterYear, filterRevenueType, fraisInscription, totalAdhesion]);
   
   const filteredDepenses = useMemo(() => {
     let result = [...depenses];
@@ -129,7 +165,7 @@ export default function FinancialDashboard() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, searchName, filterMonth, filterYear]);
+  }, [activeTab, searchName, filterMonth, filterYear, filterRevenueType]);
 
   const currentList = activeTab === 'revenus' ? filteredCotisations : filteredDepenses;
   const totalPages = Math.max(1, Math.ceil(currentList.length / ITEMS_PER_PAGE));
@@ -148,11 +184,23 @@ export default function FinancialDashboard() {
     const totalRev = cotisations.reduce((sum, c) => sum + Number(c.montant_paye), 0);
     const totalDep = depenses.reduce((sum, d) => sum + Number(d.montant), 0);
     
-    // Ventilation Frais d'inscription (300 DA ou 3 300 DA) vs Cotisations
-    const totalFraisInscription = cotisations
-      .filter(c => Number(c.montant_paye) === 300 || Number(c.montant_paye) === 3300)
-      .reduce((sum, c) => sum + Number(c.montant_paye), 0);
-    const totalCotisationsRegulieres = totalRev - totalFraisInscription;
+    // Inscriptions : versements = fraisInscription, 300, totalAdhesion ou 3300
+    const inscriptionsList = cotisations.filter(c => 
+      Number(c.montant_paye) === fraisInscription || 
+      Number(c.montant_paye) === 300 || 
+      Number(c.montant_paye) === totalAdhesion || 
+      Number(c.montant_paye) === 3300
+    );
+    
+    const totalFraisInscription = inscriptionsList.reduce((sum, c) => {
+      const val = Number(c.montant_paye);
+      if (val === totalAdhesion || val === 3300) return sum + fraisInscription;
+      return sum + val;
+    }, 0);
+    
+    const countFraisInscription = inscriptionsList.length;
+    const totalCotisationsSportives = totalRev - totalFraisInscription;
+    const countCotisations = Math.max(0, cotisations.length - countFraisInscription);
 
     const currentMonth = new Date().getMonth();
     const currentYear = new Date().getFullYear();
@@ -174,14 +222,17 @@ export default function FinancialDashboard() {
     return { 
       totalRevenue: totalRev, 
       totalFraisInscription,
-      totalCotisationsRegulieres,
+      countFraisInscription,
+      totalCotisationsSportives,
+      countCotisations,
+      countTotal: cotisations.length,
       totalThisMonth: thisMonthRev,
       totalDepenses: totalDep,
       depensesThisMonth: thisMonthDep,
       beneficeNet: totalRev - totalDep,
       beneficeThisMonth: thisMonthRev - thisMonthDep
     };
-  }, [cotisations, depenses]);
+  }, [cotisations, depenses, fraisInscription, totalAdhesion]);
 
   const expiredCount = useMemo(() => {
     const now = new Date();
@@ -861,9 +912,26 @@ export default function FinancialDashboard() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
         <div>
           <h1>Tableau de bord financier</h1>
-          <p>Suivez vos revenus, vos dépenses et calculez vos bénéfices.</p>
+          <p>Suivez vos revenus, vos dépenses et calculez vos bénéfices avec ventilation des frais.</p>
         </div>
         <div className="flex flex-wrap gap-3">
+          <Button 
+            variant="secondary" 
+            onClick={() => setShowPricingModal(true)} 
+            style={{ 
+              display: 'inline-flex', 
+              alignItems: 'center', 
+              gap: '6px',
+              backgroundColor: 'rgba(99, 102, 241, 0.12)',
+              borderColor: 'rgba(99, 102, 241, 0.35)', 
+              color: '#818cf8',
+              fontWeight: 600
+            }}
+            title="Modifier les frais d'inscription et cotisations du club"
+          >
+            <Settings size={17} /> Tarifs Club ({formatDA(fraisInscription)} / {formatDA(cotisationAdhesion)})
+          </Button>
+
           <Button variant="secondary" onClick={checkExpirations} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
             <AlertTriangle size={18} className="text-warning" /> Expirations
             {expiredCount > 0 && (
@@ -893,66 +961,83 @@ export default function FinancialDashboard() {
         </div>
       </div>
 
-      {/* TOP KPIs */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <Card className="flex-col gap-4">
+      {/* TOP KPIs - SÉPARATION DISTINCTE DES FRAIS D'INSCRIPTION & COTISATIONS */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+        {/* CARTE 1 : FRAIS D'INSCRIPTION SÉPARÉS */}
+        <Card className="flex-col gap-3" style={{ borderLeft: '4px solid #6366f1' }}>
           <div className="flex justify-between items-start">
             <div>
-              <h3 className="text-sm font-semibold text-muted mb-0">Total Revenus</h3>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Historique Global</span>
+              <h3 className="text-sm font-semibold text-muted mb-0">Frais d'Inscription</h3>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Dossiers & Badges QR</span>
+            </div>
+            <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: 'rgba(99, 102, 241, 0.12)', color: '#818cf8' }}>
+              <Coins size={20} />
+            </div>
+          </div>
+          <div style={{ fontSize: '1.85rem', fontWeight: 'bold', fontFamily: 'Outfit', color: '#818cf8' }}>
+            + {formatDZ(stats.totalFraisInscription)}
+          </div>
+          <div className="text-xs text-muted" style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px border-dashed rgba(255,255,255,0.05)', paddingTop: '5px' }}>
+            <span>Adhérents inscrits :</span>
+            <span style={{ fontWeight: 700, color: '#818cf8' }}>{stats.countFraisInscription} dossier(s) ({formatDA(fraisInscription)}/u)</span>
+          </div>
+        </Card>
+
+        {/* CARTE 2 : COTISATIONS SPORTIVES SÉPARÉES */}
+        <Card className="flex-col gap-3" style={{ borderLeft: '4px solid var(--accent-success)' }}>
+          <div className="flex justify-between items-start">
+            <div>
+              <h3 className="text-sm font-semibold text-muted mb-0">Cotisations Sportives</h3>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Entraînements & Sections</span>
             </div>
             <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: 'rgba(16, 185, 129, 0.1)', color: 'var(--accent-success)' }}>
               <TrendingUp size={20} />
             </div>
           </div>
-          <div style={{ fontSize: '2rem', fontWeight: 'bold', fontFamily: 'Outfit', color: 'var(--accent-success)' }}>
-            + {formatDZ(stats.totalRevenue)}
+          <div style={{ fontSize: '1.85rem', fontWeight: 'bold', fontFamily: 'Outfit', color: 'var(--accent-success)' }}>
+            + {formatDZ(stats.totalCotisationsSportives)}
           </div>
-          <div className="text-xs text-muted" style={{ display: 'flex', flexDirection: 'column', gap: '3px', borderTop: '1px border-dashed rgba(255,255,255,0.05)', paddingTop: '6px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>Ce mois ({currentMonthName}) :</span>
-              <span style={{ fontWeight: 600, color: 'var(--accent-success)' }}>+{formatDZ(stats.totalThisMonth)}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8' }}>
-              <span>Frais d'inscription :</span>
-              <span style={{ fontWeight: 600, color: '#818cf8' }}>+{formatDZ(stats.totalFraisInscription)}</span>
-            </div>
+          <div className="text-xs text-muted" style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px border-dashed rgba(255,255,255,0.05)', paddingTop: '5px' }}>
+            <span>Versements :</span>
+            <span style={{ fontWeight: 700, color: 'var(--accent-success)' }}>{stats.countCotisations} reçu(s) ({formatDA(cotisationAdhesion)}/mois)</span>
           </div>
         </Card>
 
-        <Card className="flex-col gap-4">
+        {/* CARTE 3 : TOTAL DÉPENSES */}
+        <Card className="flex-col gap-3" style={{ borderLeft: '4px solid var(--accent-danger)' }}>
           <div className="flex justify-between items-start">
             <div>
               <h3 className="text-sm font-semibold text-muted mb-0">Total Dépenses</h3>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Historique Global</span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Achats & Frais Club</span>
             </div>
             <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: 'var(--accent-danger)' }}>
               <TrendingDown size={20} />
             </div>
           </div>
-          <div style={{ fontSize: '2rem', fontWeight: 'bold', fontFamily: 'Outfit', color: 'var(--accent-danger)' }}>
+          <div style={{ fontSize: '1.85rem', fontWeight: 'bold', fontFamily: 'Outfit', color: 'var(--accent-danger)' }}>
             - {formatDZ(stats.totalDepenses)}
           </div>
-          <div className="text-xs text-muted" style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px border-dashed rgba(255,255,255,0.05)', paddingTop: '4px' }}>
+          <div className="text-xs text-muted" style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px border-dashed rgba(255,255,255,0.05)', paddingTop: '5px' }}>
             <span>Ce mois ({currentMonthName}) :</span>
             <span style={{ fontWeight: 600, color: 'var(--accent-danger)' }}>-{formatDZ(stats.depensesThisMonth)}</span>
           </div>
         </Card>
-        
-        <Card className="flex-col gap-4" style={{ border: '2px solid rgba(56, 189, 248, 0.2)' }}>
+
+        {/* CARTE 4 : BÉNÉFICE NET */}
+        <Card className="flex-col gap-3" style={{ borderLeft: '4px solid #38bdf8', border: '2px solid rgba(56, 189, 248, 0.25)' }}>
           <div className="flex justify-between items-start">
             <div>
               <h3 className="text-sm font-semibold text-muted mb-0">Bénéfice Net</h3>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Cumul Global</span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Solde Caisse</span>
             </div>
             <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8' }}>
               <DollarSign size={20} />
             </div>
           </div>
-          <div style={{ fontSize: '2rem', fontWeight: 'bold', fontFamily: 'Outfit', color: stats.beneficeNet >= 0 ? 'white' : 'var(--accent-danger)' }}>
+          <div style={{ fontSize: '1.85rem', fontWeight: 'bold', fontFamily: 'Outfit', color: stats.beneficeNet >= 0 ? '#38bdf8' : 'var(--accent-danger)' }}>
             {stats.beneficeNet > 0 ? '+' : ''}{formatDZ(stats.beneficeNet)}
           </div>
-          <div className="text-xs text-muted" style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px border-dashed rgba(255,255,255,0.05)', paddingTop: '4px' }}>
+          <div className="text-xs text-muted" style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px border-dashed rgba(255,255,255,0.05)', paddingTop: '5px' }}>
             <span>Ce mois ({currentMonthName}) :</span>
             <span style={{ fontWeight: 600, color: stats.beneficeThisMonth >= 0 ? '#38bdf8' : 'var(--accent-danger)' }}>
               {stats.beneficeThisMonth > 0 ? '+' : ''}{formatDZ(stats.beneficeThisMonth)}
@@ -963,7 +1048,12 @@ export default function FinancialDashboard() {
 
       {/* CHART */}
       <Card className="mb-8 p-4">
-        <h3 className="text-sm font-semibold text-muted mb-4">Évolution Financière ({new Date().getFullYear()})</h3>
+        <div className="flex flex-wrap justify-between items-center mb-4">
+          <h3 className="text-sm font-semibold text-muted mb-0">Évolution Financière ({new Date().getFullYear()})</h3>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            Total Revenus Cumulés : <strong style={{ color: 'var(--accent-success)' }}>+{formatDZ(stats.totalRevenue)}</strong>
+          </span>
+        </div>
         {chartData.length > 0 ? (
           <ResponsiveContainer width="100%" height={270}>
             <BarChart data={chartData} margin={{ top: 10, right: 20, left: 35, bottom: 0 }}>
@@ -1007,7 +1097,37 @@ export default function FinancialDashboard() {
       {/* FORMS */}
       {showPaymentForm && (
         <Card className="mb-8 p-6" style={{ borderTop: '4px solid var(--accent-success)' }}>
-          <h2 className="mb-4">{editingPaymentId ? 'Modifier un Revenu (Cotisation)' : 'Enregistrer un Revenu'}</h2>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="mb-0">{editingPaymentId ? 'Modifier un Revenu' : 'Enregistrer un Revenu'}</h2>
+            {/* Boutons de présélection rapide */}
+            <div className="flex flex-wrap gap-2">
+              <button 
+                type="button"
+                className="btn-preset"
+                style={{ padding: '4px 10px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 700, backgroundColor: 'rgba(99, 102, 241, 0.15)', color: '#818cf8', border: '1px solid rgba(99, 102, 241, 0.3)', cursor: 'pointer' }}
+                onClick={() => setFormData(prev => ({ ...prev, montant_paye: fraisInscription }))}
+              >
+                📄 Frais Inscription ({formatDA(fraisInscription)})
+              </button>
+              <button 
+                type="button"
+                className="btn-preset"
+                style={{ padding: '4px 10px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 700, backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', cursor: 'pointer' }}
+                onClick={() => setFormData(prev => ({ ...prev, montant_paye: cotisationAdhesion }))}
+              >
+                🏅 Cotisation ({formatDA(cotisationAdhesion)})
+              </button>
+              <button 
+                type="button"
+                className="btn-preset"
+                style={{ padding: '4px 10px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 700, backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)', cursor: 'pointer' }}
+                onClick={() => setFormData(prev => ({ ...prev, montant_paye: totalAdhesion }))}
+              >
+                🌟 Inscription Totale ({formatDA(totalAdhesion)})
+              </button>
+            </div>
+          </div>
+
           <form onSubmit={handlePaymentSubmit}>
             <div className="grid md:grid-cols-2 gap-6 mb-6">
               <div className="form-group">
@@ -1218,6 +1338,51 @@ export default function FinancialDashboard() {
                 <option value="2027">2027</option>
               </select>
             </div>
+
+            {/* SÉLECTEUR DE TYPE DE REVENU */}
+            {activeTab === 'revenus' && (
+              <div className="flex items-center gap-1 p-1 rounded-lg" style={{ backgroundColor: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)' }}>
+                <button
+                  type="button"
+                  className="px-3 py-1.5 rounded-md text-xs font-bold transition-all"
+                  style={{
+                    backgroundColor: filterRevenueType === 'all' ? 'var(--bg-tertiary)' : 'transparent',
+                    color: filterRevenueType === 'all' ? 'var(--text-primary)' : 'var(--text-muted)',
+                    border: 'none',
+                    cursor: 'pointer'
+                  }}
+                  onClick={() => setFilterRevenueType('all')}
+                >
+                  Tous ({stats.countTotal})
+                </button>
+                <button
+                  type="button"
+                  className="px-3 py-1.5 rounded-md text-xs font-bold transition-all"
+                  style={{
+                    backgroundColor: filterRevenueType === 'inscriptions' ? 'rgba(99, 102, 241, 0.2)' : 'transparent',
+                    color: filterRevenueType === 'inscriptions' ? '#818cf8' : 'var(--text-muted)',
+                    border: filterRevenueType === 'inscriptions' ? '1px solid rgba(99, 102, 241, 0.4)' : '1px solid transparent',
+                    cursor: 'pointer'
+                  }}
+                  onClick={() => setFilterRevenueType('inscriptions')}
+                >
+                  📄 Inscriptions ({stats.countFraisInscription})
+                </button>
+                <button
+                  type="button"
+                  className="px-3 py-1.5 rounded-md text-xs font-bold transition-all"
+                  style={{
+                    backgroundColor: filterRevenueType === 'cotisations' ? 'rgba(16, 185, 129, 0.2)' : 'transparent',
+                    color: filterRevenueType === 'cotisations' ? 'var(--accent-success)' : 'var(--text-muted)',
+                    border: filterRevenueType === 'cotisations' ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid transparent',
+                    cursor: 'pointer'
+                  }}
+                  onClick={() => setFilterRevenueType('cotisations')}
+                >
+                  🏅 Cotisations ({stats.countCotisations})
+                </button>
+              </div>
+            )}
           </div>
 
           <Button 
@@ -1477,6 +1642,130 @@ export default function FinancialDashboard() {
                 </Button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODALE DE CONFIGURATION DES TARIFS DU CLUB (ADMIN) */}
+      {showPricingModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.85)',
+          zIndex: 110,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '1rem',
+          backdropFilter: 'blur(6px)'
+        }}>
+          <div className="glass-panel" style={{
+            width: '540px',
+            maxWidth: '96vw',
+            borderRadius: '16px',
+            overflow: 'hidden',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)',
+            border: '1px solid rgba(99, 102, 241, 0.3)'
+          }}>
+            <div className="flex justify-between items-center p-4 border-b border-[rgba(255,255,255,0.1)]" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+              <div className="flex items-center gap-3">
+                <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: 'rgba(99, 102, 241, 0.15)', color: '#818cf8' }}>
+                  <Settings size={22} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                    Paramètres des Tarifs du Club
+                  </h3>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                    Définissez les frais d'inscription et cotisations appliqués dans toute l'application
+                  </span>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowPricingModal(false)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '6px', borderRadius: '8px', display: 'flex', alignItems: 'center' }}
+              >
+                <X size={22} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSavePricing} className="p-6">
+              <div className="flex flex-col gap-4 mb-6">
+                <div>
+                  <label className="form-label font-bold text-sm mb-1.5 flex items-center justify-between">
+                    <span>📄 Frais d'Inscription (Dossier & Badge QR)</span>
+                    <span style={{ color: '#818cf8', fontWeight: 800 }}>{formatDA(pricingFormData.frais_inscription)}</span>
+                  </label>
+                  <div className="relative">
+                    <input 
+                      type="number"
+                      min="0"
+                      step="50"
+                      value={pricingFormData.frais_inscription}
+                      onChange={(e) => setPricingFormData(prev => ({ ...prev, frais_inscription: Number(e.target.value) || 0 }))}
+                      className="form-input"
+                      style={{ fontSize: '1rem', fontWeight: 700, paddingRight: '3rem' }}
+                      required
+                    />
+                    <span style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontWeight: 700 }}>
+                      DA
+                    </span>
+                  </div>
+                  <span className="text-xs text-muted mt-1 block">
+                    Frais administratifs dus lors de la première inscription de l'adhérent.
+                  </span>
+                </div>
+
+                <div>
+                  <label className="form-label font-bold text-sm mb-1.5 flex items-center justify-between">
+                    <span>🏅 Droits d'Adhésion / Cotisation Club</span>
+                    <span style={{ color: 'var(--accent-success)', fontWeight: 800 }}>{formatDA(pricingFormData.cotisation_adhesion)}</span>
+                  </label>
+                  <div className="relative">
+                    <input 
+                      type="number"
+                      min="0"
+                      step="100"
+                      value={pricingFormData.cotisation_adhesion}
+                      onChange={(e) => setPricingFormData(prev => ({ ...prev, cotisation_adhesion: Number(e.target.value) || 0 }))}
+                      className="form-input"
+                      style={{ fontSize: '1rem', fontWeight: 700, paddingRight: '3rem' }}
+                      required
+                    />
+                    <span style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontWeight: 700 }}>
+                      DA
+                    </span>
+                  </div>
+                  <span className="text-xs text-muted mt-1 block">
+                    Tarif standard de la cotisation d'entraînement ou d'adhésion sportive.
+                  </span>
+                </div>
+              </div>
+
+              {/* Aperçu du total pour nouvel adhérent */}
+              <div className="p-4 rounded-xl mb-6" style={{ backgroundColor: 'rgba(16, 185, 129, 0.08)', border: '1.5px solid rgba(16, 185, 129, 0.3)' }}>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'block' }}>Total exigible à la première inscription :</span>
+                    <strong style={{ fontSize: '1.1rem', color: 'var(--accent-success)' }}>
+                      {formatDA(Number(pricingFormData.frais_inscription) + Number(pricingFormData.cotisation_adhesion))}
+                    </strong>
+                  </div>
+                  <div style={{ textAlign: 'right', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    Frais : {formatDA(pricingFormData.frais_inscription)} + Adhésion : {formatDA(pricingFormData.cotisation_adhesion)}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <Button type="button" variant="secondary" onClick={() => setShowPricingModal(false)}>
+                  Annuler
+                </Button>
+                <Button type="submit" variant="primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                  <CheckCircle2 size={16} /> Enregistrer & Appliquer
+                </Button>
+              </div>
+            </form>
           </div>
         </div>
       )}

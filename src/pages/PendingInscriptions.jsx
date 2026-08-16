@@ -31,6 +31,7 @@ import {
 import { Card, Button, Skeleton } from '../components/ui';
 import { useInscriptions } from '../hooks/useInscriptions';
 import { useRegistrationSettings } from '../hooks/useRegistrationSettings';
+import { useClubPricing } from '../hooks/useClubPricing';
 import BadgeGenerator from '../components/BadgeGenerator';
 
 // Calcul précis de l'âge
@@ -73,6 +74,7 @@ export default function PendingInscriptions() {
   } = useInscriptions();
 
   const { isOpen: isRegistrationOpen, toggleInscriptions } = useRegistrationSettings();
+  const { fraisInscription, cotisationAdhesion, totalAdhesion } = useClubPricing();
 
   const [activeTab, setActiveTab] = useState('EN_ATTENTE'); // 'EN_ATTENTE', 'VALIDE', 'REJETE', 'ALL'
   const [searchQuery, setSearchQuery] = useState('');
@@ -90,6 +92,13 @@ export default function PendingInscriptions() {
     modePaiement: 'Espèces',
     periodeFin: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   });
+
+  // Synchroniser le montant par défaut lors du chargement des tarifs
+  useEffect(() => {
+    if (totalAdhesion) {
+      setPaymentForm(prev => ({ ...prev, montant: totalAdhesion }));
+    }
+  }, [totalAdhesion]);
 
   // Modale de rejet
   const [rejectionModal, setRejectionModal] = useState({
@@ -919,7 +928,7 @@ CREATE POLICY "Admins can delete inscriptions" ON public.inscriptions FOR DELETE
                         onChange={(e) => setPaymentForm(prev => ({ ...prev, isPaid: e.target.checked }))}
                         style={{ width: '16px', height: '16px', accentColor: '#10b981', cursor: 'pointer' }}
                       />
-                      <span>Encaisser Frais d'inscription (300 DA) & Droits d'adhésion (3 000 DA) = 3 300 DA</span>
+                      <span>Encaisser Frais d'inscription ({fraisInscription} DA) & Droits d'adhésion ({cotisationAdhesion} DA) = {totalAdhesion} DA</span>
                     </label>
                     <span style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: 600 }}>Active immédiatement la carte d'accès</span>
                   </div>
