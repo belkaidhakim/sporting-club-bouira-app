@@ -423,93 +423,128 @@ export default function PublicRegistration() {
 
       // SECTION 3 : SANTÉ & DOCUMENTS JOINTS
       doc.setFillColor(248, 250, 252);
-      doc.roundedRect(18, 122, 174, 30, 3, 3, 'F');
+      doc.roundedRect(18, 118, 174, 28, 3, 3, 'F');
       doc.setDrawColor(226, 232, 240);
-      doc.roundedRect(18, 122, 174, 30, 3, 3, 'S');
+      doc.roundedRect(18, 118, 174, 28, 3, 3, 'S');
 
       doc.setFillColor(241, 245, 249);
-      doc.roundedRect(18, 122, 174, 7.5, 3, 3, 'F');
+      doc.roundedRect(18, 118, 174, 7, 3, 3, 'F');
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8);
       doc.setTextColor(15, 23, 42);
-      doc.text("PIÈCES DU DOSSIER & INFORMATIONS MÉDICALES", 24, 127.5);
+      doc.text("PIÈCES DU DOSSIER & INFORMATIONS MÉDICALES", 24, 123);
 
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7.5);
       doc.setTextColor(30, 41, 59);
-      doc.text(`• Certificat Médical : ${certificatBase64 ? 'Fourni en ligne' : 'Non fourni (À déposer au club)'}`, 24, 136);
-      doc.text(`• Autorisation Parentale : ${isMinor() ? (autorisationBase64 ? 'Fournie en ligne' : 'Requise (À fournir au secrétariat)') : 'Non requise (Majeur)'}`, 24, 141);
-      doc.text(`• Remarques / Allergies : ${data.observations_medicales || 'Aucune observation médicale particulière signalée.'}`, 24, 146);
+      doc.text(`• Certificat Médical : ${certificatBase64 ? 'Fourni en ligne' : 'Non fourni (À déposer au club)'}`, 24, 131);
+      doc.text(`• Autorisation Parentale : ${isMinor() ? (autorisationBase64 ? 'Fournie en ligne' : 'Requise (À fournir au secrétariat)') : 'Non requise (Majeur)'}`, 24, 136);
+      doc.text(`• Remarques / Allergies : ${data.observations_medicales || 'Aucune observation médicale particulière signalée.'}`, 24, 141);
 
-      // SECTION 4 : CONFORMITÉ LOI 18-07 & RÈGLEMENT
+      // SECTION 4 : FRAIS D'INSCRIPTION & DROITS D'ADHÉSION
+      doc.setFillColor(248, 250, 252);
+      doc.roundedRect(18, 150, 174, 24, 3, 3, 'F');
+      doc.setDrawColor(203, 213, 225);
+      doc.setLineWidth(0.4);
+      doc.roundedRect(18, 150, 174, 24, 3, 3, 'S');
+
+      doc.setFillColor(241, 245, 249);
+      doc.roundedRect(18, 150, 174, 7, 3, 3, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(15, 23, 42);
+      doc.text("FRAIS D'INSCRIPTION & DROITS D'ADHÉSION DU CLUB", 24, 155);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text("MONTANT DES FRAIS :", 24, 163);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(16, 185, 129);
+      doc.text("3 000 DA", 68, 163);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(71, 85, 105);
+      doc.text("(Trois Mille Dinars Algériens · Adhésion & Badge)", 93, 163);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text("STATUT DE RÈGLEMENT :", 24, 170);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(217, 119, 6);
+      doc.text("À régler au secrétariat lors du dépôt final du dossier", 68, 170);
+
+      // SECTION 5 : CONFORMITÉ LOI 18-07 & RÈGLEMENT
       doc.setFillColor(240, 253, 244);
-      doc.roundedRect(18, 156, 174, 25, 3, 3, 'F');
+      doc.roundedRect(18, 178, 174, 22, 3, 3, 'F');
       doc.setDrawColor(134, 239, 172);
       doc.setLineWidth(0.5);
-      doc.roundedRect(18, 156, 174, 25, 3, 3, 'S');
+      doc.roundedRect(18, 178, 174, 22, 3, 3, 'S');
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7.5);
       doc.setTextColor(21, 128, 61);
-      doc.text("✔ CONFORMITÉ LÉGALE LOI 18-07 & RÈGLEMENT INTÉRIEUR", 24, 162);
+      doc.text("✔ CONFORMITÉ LÉGALE LOI 18-07 & RÈGLEMENT INTÉRIEUR", 24, 183.5);
 
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(6.8);
       doc.setTextColor(51, 65, 85);
-      doc.text("Le candidat ou son représentant légal a formellement consenti au traitement sécurisé de ses données", 24, 167);
-      doc.text("personnelles et médicales par le Sporting Club Bouira, dans le respect de la loi 18-07 relative à la protection", 24, 171);
-      doc.text("des personnes physiques dans le traitement des données à caractère personnel, et a accepté le règlement intérieur.", 24, 175);
+      doc.text("Le candidat ou son représentant légal a consenti au traitement sécurisé de ses données personnelles et", 24, 188.5);
+      doc.text("médicales par le Sporting Club Bouira, conformément à la loi 18-07, et a accepté le règlement intérieur.", 24, 192.5);
 
-      // SECTION 5 : SIGNATURES
+      // SECTION 6 : SIGNATURES & CACHET
       // Cadre Adhérent
       doc.setFillColor(255, 255, 255);
-      doc.roundedRect(18, 186, 82, 48, 3, 3, 'F');
+      doc.roundedRect(18, 204, 82, 46, 3, 3, 'F');
       doc.setDrawColor(203, 213, 225);
       doc.setLineWidth(0.4);
-      doc.roundedRect(18, 186, 82, 48, 3, 3, 'S');
+      doc.roundedRect(18, 204, 82, 46, 3, 3, 'S');
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8);
       doc.setTextColor(15, 23, 42);
-      doc.text("Signature de l'adhérent / tuteur :", 24, 193);
+      doc.text("Signature de l'adhérent / tuteur :", 24, 211);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(6.5);
       doc.setTextColor(148, 163, 184);
-      doc.text('(Faire précéder de la mention "Lu et approuvé")', 24, 197);
+      doc.text('(Mention "Lu et approuvé")', 24, 215);
 
       // Cadre Administration
       doc.setFillColor(255, 255, 255);
-      doc.roundedRect(110, 186, 82, 48, 3, 3, 'F');
+      doc.roundedRect(110, 204, 82, 46, 3, 3, 'F');
       doc.setDrawColor(203, 213, 225);
-      doc.roundedRect(110, 186, 82, 48, 3, 3, 'S');
+      doc.roundedRect(110, 204, 82, 46, 3, 3, 'S');
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8);
       doc.setTextColor(15, 23, 42);
-      doc.text("Cadre réservé à l'Administration :", 116, 193);
+      doc.text("Cadre réservé à l'Administration :", 116, 211);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7.5);
       doc.setTextColor(15, 23, 42);
-      doc.text("SPORTING CLUB BOUIRA", 116, 198);
+      doc.text("SPORTING CLUB BOUIRA", 116, 216);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(6.5);
       doc.setTextColor(16, 185, 129);
-      doc.text("Secrétariat Général / Validation", 116, 202);
+      doc.text("Secrétariat Général / Caisse", 116, 220);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(6.5);
       doc.setTextColor(148, 163, 184);
-      doc.text("Statut : EN ATTENTE DE VALIDATION", 116, 206);
+      doc.text("Reçu Frais : 3 000 DA", 116, 224);
 
       // PIED DE PAGE
       doc.setDrawColor(226, 232, 240);
       doc.setLineWidth(0.5);
-      doc.line(18, 268, 192, 268);
+      doc.line(18, 256, 192, 256);
 
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7);
       doc.setTextColor(148, 163, 184);
-      doc.text(`Sporting Club Bouira · Fiche de pré-inscription générée le ${dateDemandeStr} à ${timeDemandeStr}`, 105, 273, { align: 'center' });
-      doc.text("Veuillez vous présenter au secrétariat du club muni de cette fiche pour finaliser votre inscription et retirer votre badge.", 105, 277, { align: 'center' });
+      doc.text(`Sporting Club Bouira · Fiche de pré-inscription générée le ${dateDemandeStr} à ${timeDemandeStr}`, 105, 261, { align: 'center' });
+      doc.text("Veuillez vous présenter au secrétariat du club muni de cette fiche pour finaliser votre inscription et retirer votre badge.", 105, 265, { align: 'center' });
 
       // Bandeau inférieur
       doc.setFillColor(16, 185, 129);
@@ -1200,7 +1235,29 @@ export default function PublicRegistration() {
                 </div>
               </div>
 
-              {/* SECTION 3 : CONFORMITÉ LOI 18-07 & RÈGLEMENT */}
+              {/* SECTION 3 : FRAIS D'ADHÉSION & COTISATION */}
+              <div className="mb-8 p-4 rounded-xl flex items-center justify-between gap-4" style={{ backgroundColor: '#ecfdf5', border: '1.5px solid #a7f3d0' }}>
+                <div className="flex items-center gap-3">
+                  <div style={{ width: '42px', height: '42px', borderRadius: '10px', backgroundColor: '#d1fae5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Sparkles size={22} />
+                  </div>
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#065f46' }}>
+                      Frais d'Adhésion & Inscription : 3 000 DA
+                    </h4>
+                    <span style={{ fontSize: '0.8rem', color: '#047857' }}>
+                      Comprend la licence sportive, les assurances, l'accès aux entraînements et la délivrance du Badge QR officiel.
+                    </span>
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#059669', backgroundColor: '#ffffff', padding: '4px 10px', borderRadius: '20px', border: '1px solid #a7f3d0' }}>
+                    À régler au club
+                  </span>
+                </div>
+              </div>
+
+              {/* SECTION 4 : CONFORMITÉ LOI 18-07 & RÈGLEMENT */}
               <div className="mb-8 p-5 rounded-xl" style={{ 
                 backgroundColor: errors.consentement_loi_18_07 ? '#fef2f2' : '#f8fafc', 
                 border: errors.consentement_loi_18_07 ? '1.5px solid #ef4444' : '1.5px solid #e2e8f0' 

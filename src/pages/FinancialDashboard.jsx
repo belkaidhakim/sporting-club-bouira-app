@@ -148,6 +148,12 @@ export default function FinancialDashboard() {
     const totalRev = cotisations.reduce((sum, c) => sum + Number(c.montant_paye), 0);
     const totalDep = depenses.reduce((sum, d) => sum + Number(d.montant), 0);
     
+    // Ventilation Frais d'inscription vs Cotisations
+    const totalFraisInscription = cotisations
+      .filter(c => Number(c.montant_paye) === 3000)
+      .reduce((sum, c) => sum + Number(c.montant_paye), 0);
+    const totalCotisationsRegulieres = totalRev - totalFraisInscription;
+
     const currentMonth = new Date().getMonth();
     const currentYear = new Date().getFullYear();
     
@@ -167,6 +173,8 @@ export default function FinancialDashboard() {
       
     return { 
       totalRevenue: totalRev, 
+      totalFraisInscription,
+      totalCotisationsRegulieres,
       totalThisMonth: thisMonthRev,
       totalDepenses: totalDep,
       depensesThisMonth: thisMonthDep,
@@ -900,9 +908,15 @@ export default function FinancialDashboard() {
           <div style={{ fontSize: '2rem', fontWeight: 'bold', fontFamily: 'Outfit', color: 'var(--accent-success)' }}>
             + {formatDZ(stats.totalRevenue)}
           </div>
-          <div className="text-xs text-muted" style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px border-dashed rgba(255,255,255,0.05)', paddingTop: '4px' }}>
-            <span>Ce mois ({currentMonthName}) :</span>
-            <span style={{ fontWeight: 600, color: 'var(--accent-success)' }}>+{formatDZ(stats.totalThisMonth)}</span>
+          <div className="text-xs text-muted" style={{ display: 'flex', flexDirection: 'column', gap: '3px', borderTop: '1px border-dashed rgba(255,255,255,0.05)', paddingTop: '6px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Ce mois ({currentMonthName}) :</span>
+              <span style={{ fontWeight: 600, color: 'var(--accent-success)' }}>+{formatDZ(stats.totalThisMonth)}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8' }}>
+              <span>Frais d'inscription :</span>
+              <span style={{ fontWeight: 600, color: '#818cf8' }}>+{formatDZ(stats.totalFraisInscription)}</span>
+            </div>
           </div>
         </Card>
 
@@ -1252,9 +1266,15 @@ export default function FinancialDashboard() {
                       <td className="p-4">{new Date(cotis.date_paiement).toLocaleDateString('fr-FR')}</td>
                       <td className="p-4 font-medium">{formatName(cotis.athletes?.nom, cotis.athletes?.prenom)}</td>
                       <td className="p-4">
-                        <span style={{ padding: '3px 10px', borderRadius: '12px', backgroundColor: 'rgba(16, 185, 129, 0.12)', color: 'var(--accent-success)', fontSize: '0.75rem', fontWeight: 600 }}>
-                          Cotisation
-                        </span>
+                        {Number(cotis.montant_paye) === 3000 ? (
+                          <span style={{ padding: '3px 10px', borderRadius: '12px', backgroundColor: 'rgba(99, 102, 241, 0.15)', color: '#818cf8', fontSize: '0.75rem', fontWeight: 700, border: '1px solid rgba(99, 102, 241, 0.3)' }}>
+                            Frais d'inscription
+                          </span>
+                        ) : (
+                          <span style={{ padding: '3px 10px', borderRadius: '12px', backgroundColor: 'rgba(16, 185, 129, 0.12)', color: 'var(--accent-success)', fontSize: '0.75rem', fontWeight: 600 }}>
+                            Cotisation
+                          </span>
+                        )}
                       </td>
                       <td className="p-4 text-success font-semibold">+{formatDZ(cotis.montant_paye)}</td>
                       <td className="p-4">{cotis.mode_paiement}</td>
