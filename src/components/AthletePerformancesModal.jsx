@@ -6,6 +6,7 @@ import {
   Plus, 
   Calendar, 
   Trash2, 
+  Edit,
   X, 
   Sparkles, 
   CheckCircle2, 
@@ -75,11 +76,12 @@ export default function AthletePerformancesModal({ athlete, onClose }) {
   const [bassinFilter, setBassinFilter] = useState('all'); // 'all' | '25m' | '50m'
   const [contexteFilter, setContexteFilter] = useState('all'); // 'all' | 'Entraînement' | 'Compétition' | 'Test'
   const [showAddForm, setShowAddForm] = useState(false);
+  const [editingPerfId, setEditingPerfId] = useState(null);
   const [showTargetInput, setShowTargetInput] = useState(false);
   const [targetGoalTime, setTargetGoalTime] = useState(''); // ex: 31.50
 
   // Formulaire de saisie enrichi
-  const [formData, setFormData] = useState({
+  const initialFormState = {
     event_id: '50_NL',
     time_str: '',
     date_perf: new Date().toISOString().split('T')[0],
@@ -90,7 +92,8 @@ export default function AthletePerformancesModal({ athlete, onClose }) {
     stroke_count: '', // Nombre de coups de bras
     rpe: '8', // Sensation / effort 1 à 10
     observations: ''
-  });
+  };
+  const [formData, setFormData] = useState(initialFormState);
 
   const category = useMemo(() => {
     return getSwimmingCategory(athlete?.date_naissance);
@@ -161,8 +164,26 @@ export default function AthletePerformancesModal({ athlete, onClose }) {
     }
   };
 
-  // Ajout d'un chrono Natation
-  const handleAddPerformance = (e) => {
+  // Ouvrir le formulaire pour modification
+  const handleStartEdit = (perf) => {
+    setEditingPerfId(perf.id);
+    setFormData({
+      event_id: perf.event_id,
+      time_str: perf.seconds ? (perf.seconds >= 60 ? formatSecondsToChrono(perf.seconds).replace(' s', '') : perf.seconds.toFixed(2)) : '',
+      date_perf: perf.date_perf,
+      bassin: perf.bassin || '25m',
+      contexte: perf.contexte || 'Entraînement',
+      split_50: perf.split_50 || '',
+      reaction_time: perf.reaction_time || '',
+      stroke_count: perf.stroke_count || '',
+      rpe: String(perf.rpe || 8),
+      observations: perf.observations || ''
+    });
+    setShowAddForm(true);
+  };
+
+  // Ajout ou Modification d'un chrono Natation
+  const handleSubmitPerformance = (e) => {
     e.preventDefault();
     const seconds = parseTimeToSeconds(formData.time_str);
     if (seconds <= 0) {
@@ -172,43 +193,67 @@ export default function AthletePerformancesModal({ athlete, onClose }) {
 
     const selectedEvent = SWIMMING_EVENTS.find(ev => ev.id === formData.event_id) || SWIMMING_EVENTS[0];
 
-    const newPerf = {
-      id: `perf-${Date.now()}`,
-      athlete_id: athlete.id,
-      event_id: formData.event_id,
-      event_label: selectedEvent.label,
-      seconds,
-      chrono_str: formatSecondsToChrono(seconds),
-      date_perf: formData.date_perf,
-      bassin: formData.bassin,
-      contexte: formData.contexte,
-      split_50: formData.split_50.trim(),
-      reaction_time: formData.reaction_time.trim(),
-      stroke_count: formData.stroke_count.trim(),
-      rpe: Number(formData.rpe) || 8,
-      observations: formData.observations
-    };
+    if (editingPerfId) {
+      // Modification
+      const updated = performances.map(p => {
+        if (p.id === editingPerfId) {
+          return {
+            ...p,
+            event_id: formData.event_id,
+            event_label: selectedEvent.label,
+            seconds,
+            chrono_str: formatSecondsToChrono(seconds),
+            date_perf: formData.date_perf,
+            bassin: formData.bassin,
+            contexte: formData.contexte,
+            split_50: formData.split_50.trim(),
+            reaction_time: formData.reaction_time.trim(),
+            stroke_count: formData.stroke_count.trim(),
+            rpe: Number(formData.rpe) || 8,
+            observations: formData.observations
+          };
+        }
+        return p;
+      });
 
-    const updated = [newPerf, ...performances];
-    savePerformances(updated);
-    toast.success(`Chrono enregistré : ${newPerf.event_label} en ${newPerf.chrono_str} ! 🏊`);
-    
-    setFormData(prev => ({
-      ...prev,
-      time_str: '',
-      split_50: '',
-      reaction_time: '',
-      stroke_count: '',
-      observations: ''
-    }));
+      savePerformances(updated);
+      toast.success(`Chrono modifié avec succès : ${formatSecondsToChrono(seconds)} ! ✏️`);
+      setEditingPerfId(null);
+    } else {
+      // Nouvel Ajout
+      const newPerf = {
+        id: `perf-${Date.now()}`,
+        athlete_id: athlete.id,
+        event_id: formData.event_id,
+        event_label: selectedEvent.label,
+        seconds,
+        chrono_str: formatSecondsToChrono(seconds),
+        date_perf: formData.date_perf,
+        bassin: formData.bassin,
+        contexte: formData.contexte,
+        split_50: formData.split_50.trim(),
+        reaction_time: formData.reaction_time.trim(),
+        stroke_count: formData.stroke_count.trim(),
+        rpe: Number(formData.rpe) || 8,
+        observations: formData.observations
+      };
+
+      const updated = [newPerf, ...performances];
+      savePerformances(updated);
+      toast.success(`Nouveau chrono enregistré : ${newPerf.event_label} en ${newPerf.chrono_str} ! 🏊`);
+    }
+
+    setFormData(initialFormState);
     setShowAddForm(false);
   };
 
-  // Suppression d'un chrono
-  const handleDeletePerf = (perfId) => {
-    const filtered = performances.filter(p => p.id !== perfId);
-    savePerformances(filtered);
-    toast.success('Chrono supprimé.');
+  // Suppression d'un chrono avec confirmation
+  const handleDeletePerf = (perf) => {
+    if (window.confirm(`Confirmer la suppression du chrono de ${perf.chrono_str} (${perf.event_label} du ${new Date(perf.date_perf).toLocaleDateString('fr-FR')}) ?`)) {
+      const filtered = performances.filter(p => p.id !== perf.id);
+      savePerformances(filtered);
+      toast.success('Chrono supprimé avec succès ! 🗑️');
+    }
   };
 
   // Filtrage des performances pour l'épreuve et les filtres sélectionnés
@@ -378,7 +423,17 @@ export default function AthletePerformancesModal({ athlete, onClose }) {
             </button>
 
             <button
-              onClick={() => setShowAddForm(prev => !prev)}
+              onClick={() => {
+                if (showAddForm) {
+                  setShowAddForm(false);
+                  setEditingPerfId(null);
+                  setFormData(initialFormState);
+                } else {
+                  setEditingPerfId(null);
+                  setFormData(initialFormState);
+                  setShowAddForm(true);
+                }
+              }}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -394,7 +449,7 @@ export default function AthletePerformancesModal({ athlete, onClose }) {
               }}
             >
               {showAddForm ? <X size={14} /> : <Plus size={14} />}
-              <span>{showAddForm ? 'Fermer saisie' : '+ Nouveau Chrono'}</span>
+              <span>{showAddForm ? 'Fermer formulaire' : '+ Nouveau Chrono'}</span>
             </button>
 
             <button 
@@ -408,17 +463,20 @@ export default function AthletePerformancesModal({ athlete, onClose }) {
 
         {/* CORPS DE LA MODALE */}
         <div className="p-5 overflow-y-auto" style={{ flex: 1 }}>
-          {/* FORMULAIRE D'AJOUT ENRICHI */}
+          {/* FORMULAIRE D'AJOUT / MODIFICATION ENRICHI */}
           {showAddForm && (
-            <div className="p-4 rounded-xl mb-5" style={{ backgroundColor: 'rgba(56, 189, 248, 0.06)', border: '1px solid rgba(56, 189, 248, 0.25)' }}>
+            <div className="p-4 rounded-xl mb-5" style={{ backgroundColor: editingPerfId ? 'rgba(99, 102, 241, 0.08)' : 'rgba(56, 189, 248, 0.06)', border: `1px solid ${editingPerfId ? 'rgba(99, 102, 241, 0.4)' : 'rgba(56, 189, 248, 0.25)'}` }}>
               <div className="flex justify-between items-center mb-3">
-                <h3 style={{ fontSize: '0.9rem', fontWeight: 800, color: '#38bdf8', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Timer size={16} /> Saisie d'une Performance & Métriques Techniques
+                <h3 style={{ fontSize: '0.9rem', fontWeight: 800, color: editingPerfId ? '#818cf8' : '#38bdf8', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  {editingPerfId ? <Edit size={16} /> : <Timer size={16} />}
+                  {editingPerfId ? 'Modifier le Chrono & Métriques' : 'Saisie d\'un Nouveau Chrono'}
                 </h3>
-                <span className="text-xs text-muted">Tous les champs avec * sont obligatoires</span>
+                <span className="text-xs text-muted">
+                  {editingPerfId ? 'Modifications enregistrées instantanément' : 'Tous les champs avec * sont obligatoires'}
+                </span>
               </div>
 
-              <form onSubmit={handleAddPerformance}>
+              <form onSubmit={handleSubmitPerformance}>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
                   <div>
                     <label className="form-label text-xs">Épreuve de Natation *</label>
@@ -554,11 +612,28 @@ export default function AthletePerformancesModal({ athlete, onClose }) {
                 </div>
 
                 <div className="flex justify-end gap-2 mt-2">
-                  <button type="button" className="btn-secondary text-xs" onClick={() => setShowAddForm(false)}>
+                  <button 
+                    type="button" 
+                    className="btn-secondary text-xs" 
+                    onClick={() => {
+                      setShowAddForm(false);
+                      setEditingPerfId(null);
+                      setFormData(initialFormState);
+                    }}
+                  >
                     Annuler
                   </button>
-                  <button type="submit" className="btn-primary text-xs" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                    <CheckCircle2 size={14} /> Valider le chrono
+                  <button 
+                    type="submit" 
+                    className="btn-primary text-xs" 
+                    style={{ 
+                      display: 'inline-flex', 
+                      alignItems: 'center', 
+                      gap: '5px',
+                      backgroundColor: editingPerfId ? '#6366f1' : undefined
+                    }}
+                  >
+                    <CheckCircle2 size={14} /> {editingPerfId ? 'Mettre à jour le chrono' : 'Valider le chrono'}
                   </button>
                 </div>
               </form>
@@ -577,7 +652,6 @@ export default function AthletePerformancesModal({ athlete, onClose }) {
               </span>
               {SWIMMING_STYLES.map(style => {
                 const isSelected = selectedStyleId === style.id;
-                // Nombre total de chronos enregistrés dans ce style
                 const perfsInStyle = performances.filter(p => {
                   const ev = SWIMMING_EVENTS.find(e => e.id === p.event_id);
                   return ev && ev.styleId === style.id;
@@ -879,7 +953,7 @@ export default function AthletePerformancesModal({ athlete, onClose }) {
             </div>
           )}
 
-          {/* TABLEAU DES CHRONOS ENRICHI */}
+          {/* TABLEAU DES CHRONOS ENRICHI (AVEC BOUTONS MODIFIER ET SUPPRIMER) */}
           <div className="table-responsive">
             <table style={{ width: '100%', fontSize: '0.82rem' }}>
               <thead>
@@ -893,7 +967,7 @@ export default function AthletePerformancesModal({ athlete, onClose }) {
                   <th>Sensation</th>
                   <th>Contexte</th>
                   <th>Observations</th>
-                  <th style={{ textAlign: 'right' }}>Action</th>
+                  <th style={{ textAlign: 'right', minWidth: '85px' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -914,7 +988,7 @@ export default function AthletePerformancesModal({ athlete, onClose }) {
                     }
 
                     return (
-                      <tr key={perf.id}>
+                      <tr key={perf.id} style={{ backgroundColor: editingPerfId === perf.id ? 'rgba(99, 102, 241, 0.1)' : undefined }}>
                         <td>{new Date(perf.date_perf).toLocaleDateString('fr-FR')}</td>
                         <td>
                           <strong style={{ color: isPB ? 'var(--accent-success)' : 'var(--text-primary)', fontSize: '0.9rem' }}>
@@ -971,14 +1045,48 @@ export default function AthletePerformancesModal({ athlete, onClose }) {
                           </span>
                         </td>
                         <td style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{perf.observations || '-'}</td>
+                        
+                        {/* ACTIONS : MODIFIER (✏️) ET SUPPRIMER (🗑️) */}
                         <td style={{ textAlign: 'right' }}>
-                          <button
-                            onClick={() => handleDeletePerf(perf.id)}
-                            style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', padding: '4px' }}
-                            title="Supprimer ce chrono"
-                          >
-                            <Trash2 size={14} />
-                          </button>
+                          <div className="flex justify-end gap-1.5 items-center">
+                            <button
+                              onClick={() => handleStartEdit(perf)}
+                              style={{ 
+                                background: 'none', 
+                                border: '1px solid rgba(99, 102, 241, 0.3)', 
+                                backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                                color: '#818cf8', 
+                                cursor: 'pointer', 
+                                padding: '4px 6px',
+                                borderRadius: '6px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                fontSize: '0.7rem',
+                                fontWeight: 600
+                              }}
+                              title="Modifier ce chrono"
+                            >
+                              <Edit size={13} /> Modif.
+                            </button>
+                            <button
+                              onClick={() => handleDeletePerf(perf)}
+                              style={{ 
+                                background: 'none', 
+                                border: '1px solid rgba(239, 68, 68, 0.25)', 
+                                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                                color: '#f87171', 
+                                cursor: 'pointer', 
+                                padding: '4px 6px',
+                                borderRadius: '6px',
+                                display: 'inline-flex',
+                                alignItems: 'center'
+                              }}
+                              title="Supprimer ce chrono"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
