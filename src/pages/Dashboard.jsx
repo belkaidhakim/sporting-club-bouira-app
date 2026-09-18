@@ -20,7 +20,8 @@ import {
   ExternalLink, 
   Filter,
   TrendingUp,
-  Activity
+  Activity,
+  CalendarDays
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -44,6 +45,7 @@ import { Card, StatCard, Button, Badge, Skeleton } from '../components/ui';
 import BadgeGenerator from '../components/BadgeGenerator';
 import { formatWhatsAppPhone, calculateAge, formatName, formatDA } from '../utils/formatters';
 import toast from 'react-hot-toast';
+import { useTheme } from '../contexts/ThemeContext';
 
 const JOURS_FR = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 
@@ -67,12 +69,16 @@ const parseHoraires = (horairesText) => {
 };
 
 export default function Dashboard() {
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+
   const [stats, setStats] = useState({
     total: 0,
     active: 0,
     suspended: 0,
     todayPresences: 0,
     expectedToday: 0,
+    missingRevenue: 0,
     absentTodayList: [],
     expiringSoon: [],
     expiredList: [],
@@ -84,63 +90,33 @@ export default function Dashboard() {
     recent: [],
     recentPresences: [],
     dailyPresenceTrend: [],
-    revenueBreakdown: []
+    revenueBreakdown: [],
+    planningToday: [],
+    planningTomorrow: []
   });
 
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState('presences'); // 'presences' | 'absents'
-  const [presenceFilter, setPresenceFilter] = useState('today'); // 'today', 'week', 'month', 'all'
+  const [viewMode, setViewMode] = useState('presences'); 
+  const [presenceFilter, setPresenceFilter] = useState('today'); 
   const [presenceSearch, setPresenceSearch] = useState('');
   const [selectedAthlete, setSelectedAthlete] = useState(null);
+  
+  // Modals
+  const [showBulkWA, setShowBulkWA] = useState(false);
 
   // Filtres dynamiques sur la liste des inscrits
   const [inscritsFilterGroup, setInscritsFilterGroup] = useState('ALL');
   const [inscritsFilterStatus, setInscritsFilterStatus] = useState('ALL');
   const [inscritsSearch, setInscritsSearch] = useState('');
 
-  // Validation manuelle de la présence pour un absent
-  const handleManualPresence = async (athlete) => {
-    try {
-      const { error } = await supabase
-        .from('presences')
-        .insert([{ athlete_id: athlete.id }]);
-
-      if (error && error.code !== '23505') throw error;
-
-      toast.success(`Présence validée manuellement pour ${athlete.nom} ${athlete.prenom} !`);
-
-      setStats(prev => ({
-        ...prev,
-        todayPresences: prev.todayPresences + 1,
-        absentTodayList: prev.absentTodayList.filter(a => a.id !== athlete.id),
-        recentPresences: [
-          {
-            id: `manual-${Date.now()}`,
-            date_scan: new Date().toISOString(),
-            athlete_id: athlete.id,
-            athletes: {
-              nom: athlete.nom,
-              prenom: athlete.prenom,
-              groupe: athlete.groupe,
-              groupes: athlete.groupes
-            }
-          },
-          ...prev.recentPresences
-        ]
-      }));
-    } catch (err) {
-      console.error('Erreur validation manuelle:', err);
-      toast.error('Erreur lors du pointage: ' + (err.message || ''));
-    }
-  };
-
   useEffect(() => {
     async function fetchDashboardData() {
       try {
         setLoading(true);
+        // Phase 4: Fetch tarif for financial impact
         const { data: athletesData, error: athletesError } = await supabase
           .from('athletes')
-          .select(`*, cartes_acces(statut, date_dernier_paiement), cotisations(montant_paye, date_paiement, periode_couverte_fin), groupes(id, nom, horaires)`)
+          .select(`*, cartes_acces(statut, date_dernier_paiement), cotisations(montant_paye, date_paiement, periode_couverte_fin), groupes(id, nom, horaires, tarif)`)
           .eq('est_actif', true)
           .order('date_inscription', { ascending: false });
 
@@ -148,6 +124,8 @@ export default function Dashboard() {
 
         let active = 0;
         let suspended = 0;
+        let missingRevenue = 0;
+        
         const now = new Date();
         const in7Days = new Date();
         in7Days.setDate(in7Days.getDate() + 7);
@@ -176,6 +154,8 @@ export default function Dashboard() {
           }
 
           // Analyse des dates de cotisations
+          const tarifToUse = athlete.groupes?.tarif || 3000; // Default 3000 if null
+
           if (athlete.cotisations && athlete.cotisations.length > 0) {
             const sorted = [...athlete.cotisations].sort((a, b) => new Date(b.periode_couverte_fin) - new Date(a.periode_couverte_fin));
             const endDate = new Date(sorted[0].periode_couverte_fin);
@@ -187,6 +167,7 @@ export default function Dashboard() {
                 endDateStr: endDate.toLocaleDateString('fr-FR'),
                 daysExpired
               });
+              missingRevenue += tarifToUse; // Impact financier
             } else if (endDate >= now && endDate <= in7Days) {
               const daysLeft = Math.max(0, Math.ceil((endDate - now) / (1000 * 60 * 60 * 24)));
               expiringSoon.push({
@@ -201,6 +182,7 @@ export default function Dashboard() {
               endDateStr: 'Aucune',
               daysExpired: 99
             });
+            missingRevenue += tarifToUse; // Impact financier
           }
         });
 
@@ -219,56 +201,89 @@ export default function Dashboard() {
 
         // Suivi des présences attendues aujourd'hui selon le planning
         const todayDayName = JOURS_FR[new Date().getDay()];
+        let tomorrowIndex = new Date().getDay() + 1;
+        if (tomorrowIndex > 6) tomorrowIndex = 0;
+        const tomorrowDayName = JOURS_FR[tomorrowIndex];
+
         const expectedTodayList = [];
         const absentTodayList = [];
+        const planningTodayMap = new Map();
+        const planningTomorrowMap = new Map();
 
         (athletesData || []).forEach(athlete => {
-          const groupHoraires = parseHoraires(athlete.groupes?.horaires);
-          const hasSessionToday = groupHoraires.some(h => h.jour === todayDayName);
+          if (!athlete.groupes) return;
+          const groupName = athlete.groupes.nom;
+          const groupHoraires = parseHoraires(athlete.groupes.horaires);
+          
+          const sessionToday = groupHoraires.find(h => h.jour === todayDayName);
+          const sessionTomorrow = groupHoraires.find(h => h.jour === tomorrowDayName);
 
-          if (hasSessionToday) {
+          if (sessionToday) {
             expectedTodayList.push(athlete);
+            if (!planningTodayMap.has(groupName)) planningTodayMap.set(groupName, { nom: groupName, heure: sessionToday.heure, inscrits: 0 });
+            planningTodayMap.get(groupName).inscrits += 1;
+
             if (!todayScansSet.has(athlete.id)) {
-              const sessionToday = groupHoraires.find(h => h.jour === todayDayName);
               absentTodayList.push({
                 ...athlete,
-                heureSeance: sessionToday ? sessionToday.heure : '-'
+                heureSeance: sessionToday.heure
               });
             }
           }
+          
+          if (sessionTomorrow) {
+            if (!planningTomorrowMap.has(groupName)) planningTomorrowMap.set(groupName, { nom: groupName, heure: sessionTomorrow.heure, inscrits: 0 });
+            planningTomorrowMap.get(groupName).inscrits += 1;
+          }
         });
 
-        // Historique récent des 60 présences
+        // Historique récent des présences
         const { data: presencesData } = await supabase
           .from('presences')
           .select(`id, date_scan, athlete_id, athletes (nom, prenom, groupe, groupes(nom, horaires))`)
           .order('date_scan', { ascending: false })
-          .limit(60);
+          .limit(100);
 
-        // Calcul de la tendance journalière des 7 derniers jours
+        // Récupérer les scans des 7 derniers jours pour le graphique multi-courbes
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6); // 7 points (today included)
+        sevenDaysAgo.setHours(0, 0, 0, 0);
+
+        const { data: weekScans } = await supabase
+          .from('presences')
+          .select(`date_scan, athletes(groupe, groupes(nom))`)
+          .gte('date_scan', sevenDaysAgo.toISOString());
+
         const dailyTrendMap = {};
         for (let i = 6; i >= 0; i--) {
           const d = new Date();
           d.setDate(d.getDate() - i);
           const key = d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
           const dateStr = d.toISOString().split('T')[0];
-          dailyTrendMap[dateStr] = { name: key, presences: 0, date: dateStr };
+          dailyTrendMap[dateStr] = { 
+            name: key, 
+            Total: 0, 
+            Initiation: 0, 
+            Apprentissage: 0, 
+            ElitePerf: 0,
+            date: dateStr 
+          };
         }
-
-        // Récupérer les scans des 7 derniers jours pour le graphique
-        const sevenDaysAgo = new Date();
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        sevenDaysAgo.setHours(0, 0, 0, 0);
-
-        const { data: weekScans } = await supabase
-          .from('presences')
-          .select('date_scan, athlete_id')
-          .gte('date_scan', sevenDaysAgo.toISOString());
 
         (weekScans || []).forEach(scan => {
           const dateStr = scan.date_scan.split('T')[0];
           if (dailyTrendMap[dateStr]) {
-            dailyTrendMap[dateStr].presences += 1;
+            dailyTrendMap[dateStr].Total += 1;
+            
+            // Catégorisation pour le graphique détaillé (Phase 4)
+            const gName = (scan.athletes?.groupes?.nom || scan.athletes?.groupe || '').toLowerCase();
+            if (gName.includes('initiation')) {
+              dailyTrendMap[dateStr].Initiation += 1;
+            } else if (gName.includes('apprent')) {
+              dailyTrendMap[dateStr].Apprentissage += 1;
+            } else if (gName.includes('elit') || gName.includes('élit') || gName.includes('perf') || gName.includes('entra')) {
+              dailyTrendMap[dateStr].ElitePerf += 1;
+            }
           }
         });
 
@@ -298,6 +313,7 @@ export default function Dashboard() {
           suspended,
           todayPresences: uniqueTodayAthletes,
           expectedToday: expectedTodayList.length,
+          missingRevenue,
           absentTodayList,
           expiringSoon,
           expiredList,
@@ -309,7 +325,9 @@ export default function Dashboard() {
           recent: athletesData?.slice(0, 8) || [],
           allAthletes: athletesData || [],
           recentPresences: presencesData || [],
-          dailyPresenceTrend
+          dailyPresenceTrend,
+          planningToday: Array.from(planningTodayMap.values()).sort((a,b) => a.heure.localeCompare(b.heure)),
+          planningTomorrow: Array.from(planningTomorrowMap.values()).sort((a,b) => a.heure.localeCompare(b.heure))
         });
       } catch (error) {
         console.error("Error fetching dashboard stats:", error);
@@ -319,51 +337,6 @@ export default function Dashboard() {
     }
     fetchDashboardData();
   }, []);
-
-  // Filtrage des présences
-  const filteredPresences = useMemo(() => {
-    return (stats.recentPresences || []).filter(presence => {
-      const scanDate = new Date(presence.date_scan);
-
-      if (presenceFilter === 'today') {
-        const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
-        if (scanDate < todayStart) return false;
-      } else if (presenceFilter === 'week') {
-        const weekAgo = new Date();
-        weekAgo.setDate(weekAgo.getDate() - 7);
-        if (scanDate < weekAgo) return false;
-      } else if (presenceFilter === 'month') {
-        const monthAgo = new Date();
-        monthAgo.setMonth(monthAgo.getMonth() - 1);
-        if (scanDate < monthAgo) return false;
-      }
-
-      if (presenceSearch) {
-        const q = presenceSearch.toLowerCase();
-        const nom = (presence.athletes?.nom || '').toLowerCase();
-        const prenom = (presence.athletes?.prenom || '').toLowerCase();
-        const groupe = (presence.athletes?.groupes?.nom || presence.athletes?.groupe || '').toLowerCase();
-        return nom.includes(q) || prenom.includes(q) || groupe.includes(q);
-      }
-
-      return true;
-    });
-  }, [stats.recentPresences, presenceFilter, presenceSearch]);
-
-  // Filtrage de la liste des absents
-  const filteredAbsents = useMemo(() => {
-    return (stats.absentTodayList || []).filter(athlete => {
-      if (presenceSearch) {
-        const q = presenceSearch.toLowerCase();
-        const nom = (athlete.nom || '').toLowerCase();
-        const prenom = (athlete.prenom || '').toLowerCase();
-        const groupe = (athlete.groupes?.nom || athlete.groupe || '').toLowerCase();
-        return nom.includes(q) || prenom.includes(q) || groupe.includes(q);
-      }
-      return true;
-    });
-  }, [stats.absentTodayList, presenceSearch]);
 
   // Filtrage dynamique des inscrits
   const filteredInscrits = useMemo(() => {
@@ -388,13 +361,15 @@ export default function Dashboard() {
     });
   }, [stats.allAthletes, inscritsFilterGroup, inscritsFilterStatus, inscritsSearch]);
 
+  const athletesWithPhoneToExpire = stats.expiredList.filter(a => a.telephone || a.telephone_tuteur);
+
   return (
     <div>
       {/* HEADER DU DASHBOARD */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
         <div>
           <h1>Tableau de bord de Gestion</h1>
-          <p style={{ marginBottom: 0 }}>Supervision de l'activité, assiduité aux bassins et actions requises.</p>
+          <p style={{ marginBottom: 0 }}>Supervision, assiduité et recouvrement financier.</p>
         </div>
         <div className="flex items-center gap-3">
           <Link to="/scanner" style={{ textDecoration: 'none' }}>
@@ -440,16 +415,17 @@ export default function Dashboard() {
               glowColor="rgba(34, 211, 238, 0.15)"
               label="Présences Aujourd'hui"
               value={`${stats.todayPresences} nageur(s)`}
-              subtitle={stats.expectedToday > 0 ? `${stats.todayPresences} sur ${stats.expectedToday} attendus aujourd'hui` : `Sur ${stats.active} cotisations actives`}
+              subtitle={stats.expectedToday > 0 ? `${stats.todayPresences} sur ${stats.expectedToday} attendus` : `Sur ${stats.active} actifs`}
             />
+            {/* Phase 4: Indicateur Financier Remplacé */}
             <StatCard
-              icon={<UserX size={20} />}
-              iconBg="rgba(245, 158, 11, 0.1)"
-              iconColor="var(--accent-warning)"
-              glowColor="rgba(245, 158, 11, 0.15)"
-              label="Absents Programmés"
-              value={`${stats.absentTodayList.length} absent(s)`}
-              subtitle={stats.expectedToday > 0 ? `Sur ${stats.expectedToday} athlètes programmés` : 'Aucune séance prévue ce jour'}
+              icon={<DollarSign size={20} />}
+              iconBg="rgba(239, 68, 68, 0.1)"
+              iconColor="#ef4444"
+              glowColor="rgba(239, 68, 68, 0.15)"
+              label="Manque à gagner (Impayés)"
+              value={`${formatDA(stats.missingRevenue)} DA`}
+              subtitle={`${stats.expiredList.length} cotisations suspendues`}
             />
             <StatCard
               icon={<CreditCard size={20} />}
@@ -458,74 +434,110 @@ export default function Dashboard() {
               glowColor="rgba(16, 185, 129, 0.15)"
               label="Cotisations à Jour"
               value={stats.active}
-              subtitle={`${stats.suspended} expirée(s) ou en attente`}
+              subtitle={`${stats.expiringSoon.length} arrivent à échéance`}
             />
           </motion.div>
 
-          {/* CENTRE D'ALERTES : ACTIONS REQUISES (PHASE 1) */}
-          {(stats.expiredList.length > 0 || stats.expiringSoon.length > 0 || stats.incompleteFiles.length > 0) && (
-            <motion.div variants={itemVariants} className="mb-8">
-              <Card className="p-5" style={{ backgroundColor: 'rgba(239, 68, 68, 0.06)', border: '1.5px solid rgba(239, 68, 68, 0.3)', borderRadius: '16px' }}>
+          {/* CENTRE D'ALERTES & PLANNING (PHASE 4) */}
+          <motion.div variants={itemVariants} className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
+            
+            {/* ALERTES (Occupe 2 colonnes sur grand écran) */}
+            {(stats.expiredList.length > 0 || stats.expiringSoon.length > 0 || stats.incompleteFiles.length > 0) && (
+              <Card className="p-5 xl:col-span-2" style={{ backgroundColor: 'rgba(239, 68, 68, 0.04)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
                 <div className="flex flex-wrap justify-between items-center mb-4 gap-2">
                   <div className="flex items-center gap-2.5">
-                    <div style={{ padding: '7px', borderRadius: '10px', backgroundColor: 'rgba(239, 68, 68, 0.15)', color: '#ef4444' }}>
-                      <AlertOctagon size={22} />
+                    <div style={{ padding: '7px', borderRadius: '10px', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444' }}>
+                      <AlertOctagon size={20} />
                     </div>
                     <div>
-                      <h3 className="text-base font-bold mb-0" style={{ color: '#f87171' }}>
-                        🚨 Centre d'Alertes · Actions Requises
+                      <h3 className="text-base font-bold mb-0" style={{ color: '#ef4444' }}>
+                        Centre d'Alertes
                       </h3>
                       <span className="text-xs text-muted">
-                        Cotisations à régulariser et conformité des dossiers médicaux
+                        Actions requises pour le recouvrement
                       </span>
                     </div>
                   </div>
-                  <Link to="/finances" style={{ textDecoration: 'none' }}>
-                    <Button variant="secondary" style={{ padding: '0.35rem 0.85rem', fontSize: '0.8rem', color: '#f87171', borderColor: 'rgba(239, 68, 68, 0.3)' }}>
-                      Accéder aux Finances →
+                  
+                  {/* Phase 4: Bouton Relances Groupées */}
+                  {athletesWithPhoneToExpire.length > 0 && (
+                    <Button 
+                      variant="primary" 
+                      onClick={() => setShowBulkWA(!showBulkWA)}
+                      style={{ padding: '0.35rem 0.85rem', fontSize: '0.8rem', backgroundColor: '#25D366', color: 'white', borderColor: '#25D366' }}
+                    >
+                      <MessageCircle size={14} style={{ marginRight: '6px', display: 'inline-block' }} /> 
+                      {showBulkWA ? "Fermer l'outil WhatsApp" : "Outil Relances Groupées"}
                     </Button>
-                  </Link>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* INTERFACE RELANCES GROUPÉES */}
+                <AnimatePresence>
+                  {showBulkWA && (
+                    <motion.div 
+                      initial={{ height: 0, opacity: 0 }} 
+                      animate={{ height: 'auto', opacity: 1 }} 
+                      exit={{ height: 0, opacity: 0 }}
+                      className="mb-4 overflow-hidden"
+                    >
+                      <div className="p-4 rounded-xl" style={{ backgroundColor: 'rgba(37, 211, 102, 0.05)', border: '1px solid rgba(37, 211, 102, 0.2)' }}>
+                        <h4 className="text-sm font-bold mb-2 flex items-center gap-2 text-[#25D366]">
+                          <MessageCircle size={16} /> Envoi en chaîne WhatsApp ({athletesWithPhoneToExpire.length} cibles)
+                        </h4>
+                        <p className="text-xs text-muted mb-3">Cliquez successivement sur chaque bouton pour ouvrir WhatsApp pré-rempli avec le message de relance.</p>
+                        <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto p-1">
+                          {athletesWithPhoneToExpire.map(athlete => {
+                            const wpPhone = formatWhatsAppPhone(athlete.telephone || athlete.telephone_tuteur);
+                            const msg = `Bonjour ${athlete.prenom}, votre adhésion au SC Bouira a expiré le ${athlete.endDateStr}. Merci de bien vouloir régulariser votre cotisation à la réception du club. Cordialement.`;
+                            return (
+                              <a
+                                key={`bulk-${athlete.id}`}
+                                href={`https://wa.me/${wpPhone}?text=${encodeURIComponent(msg)}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold hover:opacity-80 transition-opacity"
+                                style={{ backgroundColor: '#25D366', color: 'white', textDecoration: 'none' }}
+                                onClick={(e) => {
+                                  // Visuellement marquer comme cliqué
+                                  e.currentTarget.style.opacity = '0.5';
+                                }}
+                              >
+                                {athlete.nom} {athlete.prenom} <ExternalLink size={12}/>
+                              </a>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* ALERTE 1 : COTISATIONS EXPIRÉES */}
-                  <div className="p-4 rounded-xl flex flex-col justify-between" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+                  <div className="p-4 rounded-xl flex flex-col justify-between" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid rgba(239, 68, 68, 0.15)' }}>
                     <div>
                       <div className="flex justify-between items-center mb-2">
-                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#f87171' }}>
-                          ❌ Cotisations Expirées ({stats.expiredList.length})
+                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#ef4444' }}>
+                          ❌ Expirées ({stats.expiredList.length})
                         </span>
                         <Badge status="SUSPENDED">Bloqué</Badge>
                       </div>
-                      <p className="text-xs text-muted mb-3">
-                        Athlètes dont l'accès bassin est actuellement suspendu.
-                      </p>
                       <div className="flex flex-col gap-2 max-h-40 overflow-y-auto pr-1">
-                        {stats.expiredList.slice(0, 4).map(athlete => {
+                        {stats.expiredList.slice(0, 5).map(athlete => {
                           const wpPhone = formatWhatsAppPhone(athlete.telephone || athlete.telephone_tuteur);
                           return (
                             <div key={athlete.id} className="flex justify-between items-center p-2 rounded-lg text-xs" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
                               <div>
                                 <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{athlete.nom} {athlete.prenom}</span>
-                                <div style={{ fontSize: '0.7rem', color: '#f87171' }}>Expiré ({athlete.endDateStr})</div>
+                                <div style={{ fontSize: '0.7rem', color: '#ef4444' }}>Expiré ({athlete.endDateStr})</div>
                               </div>
                               <div className="flex items-center gap-1">
                                 {wpPhone && (
-                                  <a
-                                    href={`https://wa.me/${wpPhone}?text=${encodeURIComponent(`Bonjour ${athlete.prenom}, le Sporting Club Bouira vous informe que votre adhésion/cotisation a expiré le ${athlete.endDateStr}. Merci de vous rapprocher de l'administration pour le renouvellement.`)}`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    style={{ padding: '4px 6px', borderRadius: '6px', backgroundColor: 'rgba(37, 211, 102, 0.15)', color: '#25D366', display: 'flex', alignItems: 'center' }}
-                                    title="Relance WhatsApp 1-clic"
-                                  >
+                                  <a href={`https://wa.me/${wpPhone}?text=${encodeURIComponent(`Bonjour ${athlete.prenom}...`)}`} target="_blank" rel="noreferrer" style={{ padding: '4px 6px', borderRadius: '6px', backgroundColor: 'rgba(37, 211, 102, 0.15)', color: '#25D366' }}>
                                     <MessageCircle size={14} />
                                   </a>
                                 )}
-                                <Link to={`/finances?search=${encodeURIComponent(athlete.nom)}`} style={{ textDecoration: 'none' }}>
-                                  <button style={{ padding: '3px 7px', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 700, backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: 'none', cursor: 'pointer' }}>
-                                    Payer
-                                  </button>
-                                </Link>
                               </div>
                             </div>
                           );
@@ -539,87 +551,19 @@ export default function Dashboard() {
                     <div>
                       <div className="flex justify-between items-center mb-2">
                         <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#f59e0b' }}>
-                          ⏳ Renouvellements Imminents ({stats.expiringSoon.length})
+                          ⏳ Imminents ({stats.expiringSoon.length})
                         </span>
                         <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.15)', padding: '2px 8px', borderRadius: '9999px' }}>
                           &lt; 7 jours
                         </span>
                       </div>
-                      <p className="text-xs text-muted mb-3">
-                        À relancer avant suspension automatique de la carte.
-                      </p>
                       <div className="flex flex-col gap-2 max-h-40 overflow-y-auto pr-1">
-                        {stats.expiringSoon.slice(0, 4).map(athlete => {
-                          const wpPhone = formatWhatsAppPhone(athlete.telephone || athlete.telephone_tuteur);
+                        {stats.expiringSoon.slice(0, 5).map(athlete => {
                           return (
                             <div key={athlete.id} className="flex justify-between items-center p-2 rounded-lg text-xs" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
                               <div>
                                 <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{athlete.nom} {athlete.prenom}</span>
-                                <div style={{ fontSize: '0.7rem', color: '#f59e0b' }}>Dans {athlete.daysLeft}j ({athlete.endDateStr})</div>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                {wpPhone && (
-                                  <a
-                                    href={`https://wa.me/${wpPhone}?text=${encodeURIComponent(`Bonjour ${athlete.prenom}, votre cotisation au Sporting Club Bouira expire dans ${athlete.daysLeft} jour(s) (${athlete.endDateStr}). Pensez à renouveler pour conserver votre accès fluide au bassin.`)}`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    style={{ padding: '4px 6px', borderRadius: '6px', backgroundColor: 'rgba(37, 211, 102, 0.15)', color: '#25D366', display: 'flex', alignItems: 'center' }}
-                                    title="Rappel préventif WhatsApp"
-                                  >
-                                    <MessageCircle size={14} />
-                                  </a>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* ALERTE 3 : DOSSIERS INCOMPLETS (SANS CERTIFICAT MÉDICAL) */}
-                  <div className="p-4 rounded-xl flex flex-col justify-between" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid rgba(99, 102, 241, 0.2)' }}>
-                    <div>
-                      <div className="flex justify-between items-center mb-2">
-                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#818cf8' }}>
-                          📄 Dossiers Médicaux Incomplets ({stats.incompleteFiles.length})
-                        </span>
-                        <HeartPulse size={16} color="#818cf8" />
-                      </div>
-                      <p className="text-xs text-muted mb-3">
-                        Certificat médical ou photo manquante (obligatoire en natation).
-                      </p>
-                      <div className="flex flex-col gap-2 max-h-40 overflow-y-auto pr-1">
-                        {stats.incompleteFiles.slice(0, 5).map(athlete => {
-                          const wpPhone = formatWhatsAppPhone(athlete.telephone || athlete.telephone_tuteur);
-                          const docType = athlete.missingCertif ? 'certificat médical d\'aptitude' : 'photo d\'identité';
-                          const msgRelance = `Bonjour ${athlete.prenom}, votre dossier au Sporting Club Bouira est incomplet (${docType} manquant). Ce document est indispensable pour l'accès aux bassins. Merci de le transmettre au club dès que possible.`;
-
-                          return (
-                            <div key={athlete.id} className="flex justify-between items-center p-2 rounded-lg text-xs" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-                              <div>
-                                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{athlete.nom} {athlete.prenom}</span>
-                                <div style={{ fontSize: '0.7rem', color: '#818cf8' }}>
-                                  {athlete.missingCertif ? '❌ Sans Certificat' : '❌ Sans Photo'}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                {wpPhone && (
-                                  <a
-                                    href={`https://wa.me/${wpPhone}?text=${encodeURIComponent(msgRelance)}`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    style={{ padding: '4px 6px', borderRadius: '6px', backgroundColor: 'rgba(37, 211, 102, 0.15)', color: '#25D366', display: 'flex', alignItems: 'center' }}
-                                    title="Relancer par WhatsApp"
-                                  >
-                                    <MessageCircle size={13} />
-                                  </a>
-                                )}
-                                <Link to={`/athletes/edit/${athlete.id}`} style={{ textDecoration: 'none' }}>
-                                  <button style={{ padding: '3px 7px', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 700, backgroundColor: 'rgba(99, 102, 241, 0.15)', color: '#818cf8', border: 'none', cursor: 'pointer' }}>
-                                    Compléter
-                                  </button>
-                                </Link>
+                                <div style={{ fontSize: '0.7rem', color: '#f59e0b' }}>Dans {athlete.daysLeft}j</div>
                               </div>
                             </div>
                           );
@@ -629,48 +573,97 @@ export default function Dashboard() {
                   </div>
                 </div>
               </Card>
-            </motion.div>
-          )}
+            )}
 
-          {/* GRAPHIQUES D'ANALYSE (PHASE 1) */}
+            {/* PHASE 4: PLANNING SPORTIF */}
+            <Card className="p-5 xl:col-span-1 border-l-4" style={{ borderLeftColor: 'var(--accent-primary)' }}>
+              <div className="flex justify-between items-center mb-4">
+                <div className="flex items-center gap-2">
+                  <div style={{ padding: '6px', borderRadius: '8px', backgroundColor: 'rgba(99, 102, 241, 0.1)', color: 'var(--accent-primary)' }}>
+                    <CalendarDays size={18} />
+                  </div>
+                  <h3 className="text-base font-bold mb-0">Planning Bassin</h3>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-muted mb-2">Aujourd'hui</h4>
+                {stats.planningToday.length === 0 ? (
+                  <p className="text-sm text-muted">Aucune séance prévue.</p>
+                ) : (
+                  <ul className="flex flex-col gap-2">
+                    {stats.planningToday.map((seance, idx) => (
+                      <li key={`td-${idx}`} className="flex justify-between items-center text-sm p-2 rounded-md" style={{ backgroundColor: 'var(--bg-secondary)' }}>
+                        <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>{seance.nom}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-mono bg-indigo-500/10 text-indigo-500 px-1.5 py-0.5 rounded">{seance.heure}</span>
+                          <span className="text-xs text-muted">({seance.inscrits} inscrits)</span>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-muted mb-2">Demain</h4>
+                {stats.planningTomorrow.length === 0 ? (
+                  <p className="text-sm text-muted">Aucune séance prévue.</p>
+                ) : (
+                  <ul className="flex flex-col gap-2">
+                    {stats.planningTomorrow.map((seance, idx) => (
+                      <li key={`tm-${idx}`} className="flex justify-between items-center text-sm p-2 rounded-md" style={{ backgroundColor: 'var(--bg-secondary)' }}>
+                        <span className="font-medium text-muted">{seance.nom}</span>
+                        <span className="text-xs text-muted">{seance.heure}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </Card>
+          </motion.div>
+
+          {/* GRAPHIQUES D'ANALYSE */}
           <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-            {/* COURBE DE FRÉQUENTATION HEBDOMADAIRE (RECHARTS) */}
+            {/* PHASE 4: COURBE DE FRÉQUENTATION DÉTAILLÉE PAR GROUPE */}
             <Card className="p-5 lg:col-span-2">
               <div className="flex justify-between items-center mb-4">
                 <div>
                   <h3 className="text-base font-bold mb-0" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Activity size={18} color="var(--accent-secondary)" />
-                    Fréquentation & Assiduité aux Bassins
+                    Assiduité par type de groupe
                   </h3>
-                  <span className="text-xs text-muted">Évolution des passages et scans journaliers</span>
-                </div>
-                <div style={{ padding: '4px 10px', borderRadius: '8px', backgroundColor: 'rgba(34, 211, 238, 0.1)', color: 'var(--accent-secondary)', fontSize: '0.75rem', fontWeight: 700 }}>
-                  7 Derniers Jours
+                  <span className="text-xs text-muted">Répartition des passages (Initiation, Apprentissage, Élite)</span>
                 </div>
               </div>
 
               {stats.dailyPresenceTrend && stats.dailyPresenceTrend.length > 0 ? (
-                <ResponsiveContainer width="100%" height={240}>
+                <ResponsiveContainer width="100%" height={260}>
                   <AreaChart data={stats.dailyPresenceTrend} margin={{ top: 10, right: 15, left: -15, bottom: 0 }}>
                     <defs>
-                      <linearGradient id="presenceGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="var(--accent-secondary)" stopOpacity={0.4}/>
-                        <stop offset="95%" stopColor="var(--accent-secondary)" stopOpacity={0.0}/>
+                      <linearGradient id="colorInit" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0.0}/>
+                      </linearGradient>
+                      <linearGradient id="colorAppr" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.0}/>
+                      </linearGradient>
+                      <linearGradient id="colorElite" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.0}/>
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
-                    <XAxis dataKey="name" stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+                    <XAxis dataKey="name" stroke="var(--text-muted)" fontSize={11} tickLine={false} axisLine={false} />
                     <YAxis stroke="var(--text-muted)" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
                     <Tooltip
-                      contentStyle={{
-                        backgroundColor: 'rgba(15, 23, 42, 0.95)',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: '10px',
-                        fontSize: '0.85rem'
-                      }}
-                      formatter={(val) => [`${val} passage(s)`, 'Présences']}
+                      contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.95)', border: '1px solid var(--border-color)', borderRadius: '10px', fontSize: '0.85rem' }}
                     />
-                    <Area type="monotone" dataKey="presences" stroke="var(--accent-secondary)" strokeWidth={3} fillOpacity={1} fill="url(#presenceGrad)" />
+                    <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
+                    <Area type="monotone" name="Initiation" dataKey="Initiation" stackId="1" stroke="#10b981" strokeWidth={2} fill="url(#colorInit)" />
+                    <Area type="monotone" name="Apprentissage" dataKey="Apprentissage" stackId="1" stroke="#3b82f6" strokeWidth={2} fill="url(#colorAppr)" />
+                    <Area type="monotone" name="Élite / Perf" dataKey="ElitePerf" stackId="1" stroke="#8b5cf6" strokeWidth={2} fill="url(#colorElite)" />
                   </AreaChart>
                 </ResponsiveContainer>
               ) : (
@@ -678,16 +671,15 @@ export default function Dashboard() {
               )}
             </Card>
 
-            {/* JAUGE DE REMPLISSAGE PAR SECTION AQUATIQUE */}
+            {/* JAUGE DE REMPLISSAGE */}
             <Card className="p-5">
               <div className="flex justify-between items-center mb-4">
                 <div>
-                  <h3 className="text-base font-bold mb-0">Remplissage des Groupes</h3>
-                  <span className="text-xs text-muted">Capacité globale : {stats.globalFillRate}%</span>
+                  <h3 className="text-base font-bold mb-0">Remplissage Groupes</h3>
+                  <span className="text-xs text-muted">Taux d'occupation global : {stats.globalFillRate}%</span>
                 </div>
               </div>
-
-              <div className="flex flex-col gap-3.5 mt-2">
+              <div className="flex flex-col gap-3.5 mt-2 overflow-y-auto pr-1" style={{ maxHeight: '250px' }}>
                 {stats.groupCapacityStats.map(g => (
                   <div key={g.id} className="p-2.5 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)' }}>
                     <div className="flex justify-between items-center text-xs mb-1.5">
@@ -710,20 +702,18 @@ export default function Dashboard() {
             </Card>
           </motion.div>
 
-          {/* TABLEAUX AVEC FILTRES DYNAMIQUES (PHASE 1) */}
+          {/* TABLEAUX DES ADHÉRENTS */}
           <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* DERNIERS INSCRITS AVEC FILTRES INSTANTANÉS */}
-            <Card className="p-5 lg:col-span-2">
+            <Card className="p-5 lg:col-span-3">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
                 <div>
                   <h3 className="text-base font-bold mb-0">Adhérents du Club ({filteredInscrits.length})</h3>
-                  <span className="text-xs text-muted">Filtres dynamiques par groupe et statut</span>
+                  <span className="text-xs text-muted">Filtres dynamiques et actions rapides</span>
                 </div>
-                {/* FILTRES EN 1 CLIC SANS RECHARGER */}
                 <div className="flex flex-wrap gap-2 items-center">
                   <input
                     type="text"
-                    placeholder="🔍 Filtrer par nom..."
+                    placeholder="🔍 Nom..."
                     value={inscritsSearch}
                     onChange={(e) => setInscritsSearch(e.target.value)}
                     className="form-input"
@@ -743,15 +733,15 @@ export default function Dashboard() {
               </div>
 
               <div className="table-responsive">
-                <table style={{ minWidth: '550px' }}>
+                <table style={{ minWidth: '800px' }}>
                   <thead>
                     <tr>
                       <th>Adhérent</th>
                       <th>Catégorie</th>
                       <th>Groupe</th>
-                      <th>Cotisation</th>
+                      <th>Expiration</th>
                       <th>Statut</th>
-                      <th style={{ textAlign: 'right' }}>Badge</th>
+                      <th style={{ textAlign: 'right' }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -762,19 +752,27 @@ export default function Dashboard() {
                         </td>
                       </tr>
                     ) : (
-                      filteredInscrits.slice(0, 8).map(athlete => {
+                      filteredInscrits.slice(0, 15).map(athlete => {
                         const statut = athlete.cartes_acces?.statut || (Array.isArray(athlete.cartes_acces) && athlete.cartes_acces[0]?.statut);
                         const age = calculateAge(athlete.date_naissance);
+                        
+                        // Phase 4: Mise en évidence visuelle des suspendus
+                        const rowStyle = statut !== 'ACTIVE' 
+                          ? { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.1)' : 'rgba(239, 68, 68, 0.05)' } 
+                          : {};
+
                         return (
-                          <tr key={athlete.id}>
+                          <tr key={athlete.id} style={rowStyle}>
                             <td style={{ fontWeight: 600 }}>
-                              {athlete.nom} {athlete.prenom}
+                              <Link to={`/athletes/${athlete.id}`} style={{ color: 'var(--text-primary)', textDecoration: 'none' }}>
+                                {athlete.nom} {athlete.prenom}
+                              </Link>
                             </td>
                             <td style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                               {age ? `${age} ans` : '-'}
                             </td>
                             <td>{athlete.groupes?.nom || athlete.groupe || '-'}</td>
-                            <td style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                            <td style={{ fontSize: '0.8rem', color: statut !== 'ACTIVE' ? '#ef4444' : 'var(--text-secondary)' }}>
                               {athlete.cotisations && athlete.cotisations.length > 0
                                 ? new Date(Math.max(...athlete.cotisations.map(c => new Date(c.periode_couverte_fin).getTime()))).toLocaleDateString('fr-FR')
                                 : '-'}
@@ -785,13 +783,16 @@ export default function Dashboard() {
                               </Badge>
                             </td>
                             <td style={{ textAlign: 'right' }}>
-                              <button 
-                                className="btn-secondary" 
-                                style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem', borderRadius: '6px' }}
-                                onClick={() => setSelectedAthlete(athlete)}
-                              >
-                                <QrCode size={14} />
-                              </button>
+                              <Link to={`/finances?search=${encodeURIComponent(athlete.nom)}`} style={{ textDecoration: 'none', marginRight: '6px' }}>
+                                <button className="btn-secondary" style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem', borderRadius: '6px' }}>
+                                  <DollarSign size={14} />
+                                </button>
+                              </Link>
+                              <Link to={`/athletes/edit/${athlete.id}`} style={{ textDecoration: 'none' }}>
+                                <button className="btn-secondary" style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem', borderRadius: '6px' }}>
+                                  Voir
+                                </button>
+                              </Link>
                             </td>
                           </tr>
                         );
@@ -801,105 +802,8 @@ export default function Dashboard() {
                 </table>
               </div>
             </Card>
-
-            {/* JOURNAL DES POINTAGES BASSIN */}
-            <Card className="p-5">
-              <div className="flex justify-between items-center mb-4">
-                <div>
-                  <h3 className="text-base font-bold mb-0">Pointages Récents</h3>
-                  <span className="text-xs text-muted">Contrôles en temps réel</span>
-                </div>
-                <div className="flex gap-1">
-                  <button 
-                    onClick={() => setViewMode('presences')} 
-                    style={{ 
-                      padding: '3px 8px', 
-                      borderRadius: '6px', 
-                      fontSize: '0.75rem', 
-                      fontWeight: 700, 
-                      backgroundColor: viewMode === 'presences' ? 'var(--accent-secondary)' : 'transparent',
-                      color: viewMode === 'presences' ? '#000' : 'var(--text-muted)',
-                      border: 'none',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Présents ({stats.todayPresences})
-                  </button>
-                  <button 
-                    onClick={() => setViewMode('absents')} 
-                    style={{ 
-                      padding: '3px 8px', 
-                      borderRadius: '6px', 
-                      fontSize: '0.75rem', 
-                      fontWeight: 700, 
-                      backgroundColor: viewMode === 'absents' ? 'var(--accent-warning)' : 'transparent',
-                      color: viewMode === 'absents' ? '#000' : 'var(--text-muted)',
-                      border: 'none',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Absents ({stats.absentTodayList.length})
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-2.5 max-h-96 overflow-y-auto pr-1">
-                {viewMode === 'presences' ? (
-                  filteredPresences.length === 0 ? (
-                    <div className="text-center text-muted text-xs py-8">Aucun scan récent.</div>
-                  ) : (
-                    filteredPresences.slice(0, 8).map(p => (
-                      <div key={p.id} className="p-2.5 rounded-lg flex justify-between items-center text-xs" style={{ backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)' }}>
-                        <div>
-                          <strong style={{ color: 'var(--text-primary)', display: 'block' }}>{p.athletes?.nom} {p.athletes?.prenom}</strong>
-                          <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>{p.athletes?.groupes?.nom || p.athletes?.groupe || '-'}</span>
-                        </div>
-                        <span style={{ color: 'var(--accent-secondary)', fontWeight: 700, fontSize: '0.75rem' }}>
-                          {new Date(p.date_scan).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
-                    ))
-                  )
-                ) : (
-                  filteredAbsents.length === 0 ? (
-                    <div className="text-center text-muted text-xs py-8">Tous les athlètes attendus sont présents ! 🎉</div>
-                  ) : (
-                    filteredAbsents.slice(0, 8).map(a => (
-                      <div key={a.id} className="p-2.5 rounded-lg flex justify-between items-center text-xs" style={{ backgroundColor: 'var(--bg-tertiary)', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
-                        <div>
-                          <strong style={{ color: 'var(--text-primary)', display: 'block' }}>{a.nom} {a.prenom}</strong>
-                          <span style={{ color: '#f59e0b', fontSize: '0.7rem' }}>Séance : {a.heureSeance}</span>
-                        </div>
-                        <button 
-                          onClick={() => handleManualPresence(a)}
-                          style={{ padding: '3px 8px', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 700, backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: 'none', cursor: 'pointer' }}
-                        >
-                          Valider
-                        </button>
-                      </div>
-                    ))
-                  )
-                )}
-              </div>
-            </Card>
           </motion.div>
         </motion.div>
-      )}
-
-      {/* MODALE D'APERÇU DU BADGE */}
-      {selectedAthlete && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-          <div className="glass-panel" style={{ padding: '1.5rem', borderRadius: '16px', maxWidth: '400px', width: '100%', position: 'relative' }}>
-            <button 
-              onClick={() => setSelectedAthlete(null)}
-              style={{ position: 'absolute', right: '1rem', top: '1rem', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
-            >
-              <X size={20} />
-            </button>
-            <h3 className="mb-4 text-center">Badge d'Accès Officiel</h3>
-            <BadgeGenerator athlete={selectedAthlete} showEndDate={true} />
-          </div>
-        </div>
       )}
     </div>
   );
