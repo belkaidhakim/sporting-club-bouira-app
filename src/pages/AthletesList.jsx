@@ -6,6 +6,7 @@ import BadgeGenerator from '../components/BadgeGenerator';
 import AthletePerformancesModal from '../components/AthletePerformancesModal';
 import { getSwimmingCategory, detectSiblingGroups } from '../utils/swimmingCategories';
 import { generateBadgeSheetPDF } from '../utils/badgeSheetPdfGenerator';
+import { generateOfficialRegistrationFormPdf } from '../utils/registrationFormPdfGenerator';
 import toast from 'react-hot-toast';
 import Papa from 'papaparse';
 import { useAthletes } from '../hooks/useAthletes';
@@ -760,8 +761,27 @@ export default function AthletesList() {
             </button>
             <h2 className="mb-4 text-center">Badge d'accès</h2>
             <BadgeGenerator athlete={selectedAthlete} />
-            <div className="mt-6 flex justify-center gap-3">
+            <div className="mt-6 flex flex-wrap justify-center gap-3">
               <Button variant="secondary" onClick={() => setSelectedAthlete(null)}>Fermer</Button>
+              <Button 
+                variant="secondary"
+                onClick={async () => {
+                  try {
+                    toast.loading("Génération de la fiche d'inscription officielle...", { id: 'athlete-dossier' });
+                    await generateOfficialRegistrationFormPdf({
+                      data: selectedAthlete,
+                      photoBase64: selectedAthlete.photo || selectedAthlete.photo_url,
+                      selectedGroupeNom: selectedAthlete.groupes?.nom || selectedAthlete.groupe
+                    });
+                    toast.success("Fiche PDF générée et téléchargée !", { id: 'athlete-dossier' });
+                  } catch (e) {
+                    toast.error("Erreur: " + e.message, { id: 'athlete-dossier' });
+                  }
+                }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              >
+                <FileText size={16} /> Fiche d'adhésion (PDF)
+              </Button>
               <Button variant="primary" onClick={() => window.print()}>
                 <Printer size={16} /> Imprimer le badge
               </Button>

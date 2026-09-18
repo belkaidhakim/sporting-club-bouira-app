@@ -31,6 +31,7 @@ import { useClubPricing } from '../hooks/useClubPricing';
 import { formatDA, formatName, calculateAge, formatPhoneInput } from '../utils/formatters';
 import { compressImageFile } from '../utils/imageCompressor';
 import { loadClubLogoBase64 } from '../utils/pdfHelpers';
+import { generateOfficialRegistrationFormPdf } from '../utils/registrationFormPdfGenerator';
 
 const unformatPhone = (formatted = '') => {
   return formatted.replace(/\s+/g, '');
@@ -174,338 +175,38 @@ export default function PublicRegistration() {
     }
   };
 
-  // Chargement sécurisé du logo pour le PDF
-  // Génération du PDF de la Fiche de Pré-Inscription
+  // Génération du PDF du Dossier d'Inscription Officiel (Tout-en-Un)
   const generateRegistrationPDF = async (data, numeroDossier) => {
     try {
-      const logoBase64 = await loadClubLogoBase64();
-      const doc = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4'
+      const selectedGroupeNom = groupes.find(g => g.id === data.groupe_id)?.nom || null;
+      return await generateOfficialRegistrationFormPdf({
+        data,
+        numeroDossier,
+        photoBase64,
+        fraisInscription,
+        cotisationAdhesion,
+        selectedGroupeNom
       });
-
-      const dateDemandeStr = new Date().toLocaleDateString('fr-FR');
-      const timeDemandeStr = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-      const birthDateStr = data.date_naissance ? new Date(data.date_naissance).toLocaleDateString('fr-FR') : '-';
-      const selectedGroupe = groupes.find(g => g.id === data.groupe_id)?.nom || 'Non spécifié';
-
-      // 1. BANDEAU SUPÉRIEUR
-      doc.setFillColor(15, 23, 42); // Bleu Foncé Navy
-      doc.rect(0, 0, 210, 5, 'F');
-      doc.setFillColor(16, 185, 129); // Vert
-      doc.rect(0, 5, 210, 2, 'F');
-
-      // 2. EN-TÊTE DU CLUB & LOGO
-      let headerTextX = 18;
-      if (logoBase64) {
-        try {
-          doc.addImage(logoBase64, 'JPEG', 18, 12, 22, 22);
-          headerTextX = 45;
-        } catch (e) {
-          console.warn('Logo error:', e);
-        }
-      }
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(15);
-      doc.setTextColor(15, 23, 42);
-      doc.text('SPORTING CLUB BOUIRA', headerTextX, 18);
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8.5);
-      doc.setTextColor(16, 185, 129);
-      doc.text('CLUB AMATEUR SPORTIF SPORTING BOUIRA', headerTextX, 23.5);
-
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7.5);
-      doc.setTextColor(100, 116, 139);
-      doc.text('Siège Social : Complexe Sportif, Wilaya de Bouira · Algérie', headerTextX, 28.5);
-      doc.text('Tél : +213 (0) 550 00 00 00 · Email : contact@sportingclub-bouira.com', headerTextX, 33);
-
-      // Boîte Numéro de dossier (En haut à droite)
-      doc.setFillColor(248, 250, 252);
-      doc.roundedRect(138, 11, 54, 24, 3, 3, 'F');
-      doc.setDrawColor(15, 23, 42);
-      doc.setLineWidth(0.4);
-      doc.roundedRect(138, 11, 54, 24, 3, 3, 'S');
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      doc.setTextColor(15, 23, 42);
-      doc.text('FICHE DE PRÉ-INSCRIPTION', 165, 17, { align: 'center' });
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8.5);
-      doc.setTextColor(16, 185, 129);
-      doc.text(numeroDossier, 165, 23, { align: 'center' });
-
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7.5);
-      doc.setTextColor(100, 116, 139);
-      doc.text(`Déposé le : ${dateDemandeStr}`, 165, 29, { align: 'center' });
-
-      // Ligne de séparation
-      doc.setDrawColor(226, 232, 240);
-      doc.setLineWidth(0.5);
-      doc.line(18, 39, 192, 39);
-
-      // 3. PHOTO DE L'ADHÉRENT (Si disponible)
-      let infoBoxWidth = 174;
-      if (photoBase64) {
-        try {
-          doc.setFillColor(241, 245, 249);
-          doc.roundedRect(162, 44, 30, 36, 2, 2, 'F');
-          doc.setDrawColor(203, 213, 225);
-          doc.roundedRect(162, 44, 30, 36, 2, 2, 'S');
-          doc.addImage(photoBase64, 'JPEG', 163, 45, 28, 34);
-          infoBoxWidth = 140;
-        } catch (e) {
-          console.warn('Photo embed error:', e);
-        }
-      }
-
-      // SECTION 1 : INFORMATIONS PERSONNELLES
-      doc.setFillColor(248, 250, 252);
-      doc.roundedRect(18, 44, infoBoxWidth, 36, 3, 3, 'F');
-      doc.setDrawColor(226, 232, 240);
-      doc.roundedRect(18, 44, infoBoxWidth, 36, 3, 3, 'S');
-
-      doc.setFillColor(241, 245, 249);
-      doc.roundedRect(18, 44, infoBoxWidth, 7.5, 3, 3, 'F');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      doc.setTextColor(15, 23, 42);
-      doc.text("IDENTITÉ DU CANDIDAT À L'ADHÉSION", 24, 49.5);
-
-      // Nom & Prénom
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
-      doc.setTextColor(100, 116, 139);
-      doc.text("NOM & PRÉNOM :", 24, 58);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(11);
-      doc.setTextColor(15, 23, 42);
-      doc.text(`${data.nom.toUpperCase()} ${data.prenom}`, 24, 65);
-
-      // Date de naissance & Sexe
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
-      doc.setTextColor(100, 116, 139);
-      doc.text("NÉ(E) LE :", 24, 73);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8.5);
-      doc.setTextColor(30, 41, 59);
-      doc.text(`${birthDateStr} (${data.sexe})`, 44, 73);
-
-      // SECTION 2 : CONTACT & COORDONNÉES
-      doc.setFillColor(248, 250, 252);
-      doc.roundedRect(18, 84, 174, 34, 3, 3, 'F');
-      doc.setDrawColor(226, 232, 240);
-      doc.roundedRect(18, 84, 174, 34, 3, 3, 'S');
-
-      doc.setFillColor(241, 245, 249);
-      doc.roundedRect(18, 84, 174, 7.5, 3, 3, 'F');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      doc.setTextColor(15, 23, 42);
-      doc.text("COORDONNÉES & SECTION SPORTIVE", 24, 89.5);
-
-      // Téléphone Adhérent
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
-      doc.setTextColor(100, 116, 139);
-      doc.text("TÉLÉPHONE ADHÉRENT :", 24, 98);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8.5);
-      doc.setTextColor(30, 41, 59);
-      doc.text(data.telephone || "Non renseigné", 65, 98);
-
-      // Téléphone Parent / Tuteur
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
-      doc.setTextColor(100, 116, 139);
-      doc.text("CONTACT PARENT / TUTEUR :", 110, 98);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8.5);
-      doc.setTextColor(30, 41, 59);
-      doc.text(data.telephone_parent || "Non renseigné", 154, 98);
-
-      // Groupe / Catégorie
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
-      doc.setTextColor(100, 116, 139);
-      doc.text("SECTION / GROUPE :", 24, 106);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8.5);
-      doc.setTextColor(16, 185, 129);
-      doc.text(selectedGroupe, 65, 106);
-
-      // Adresse
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
-      doc.setTextColor(100, 116, 139);
-      doc.text("ADRESSE :", 24, 113);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8);
-      doc.setTextColor(30, 41, 59);
-      doc.text(data.adresse || "Non renseignée", 65, 113);
-
-      // SECTION 3 : SANTÉ & DOCUMENTS JOINTS
-      doc.setFillColor(248, 250, 252);
-      doc.roundedRect(18, 118, 174, 30, 3, 3, 'F');
-      doc.setDrawColor(226, 232, 240);
-      doc.roundedRect(18, 118, 174, 30, 3, 3, 'S');
-
-      doc.setFillColor(241, 245, 249);
-      doc.roundedRect(18, 118, 174, 7, 3, 3, 'F');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      doc.setTextColor(15, 23, 42);
-      doc.text("PIÈCES DU DOSSIER & INFORMATIONS MÉDICALES", 24, 123);
-
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7.2);
-      doc.setTextColor(30, 41, 59);
-      doc.text(`• Certificat Médical : ${certificatBase64 ? 'Fourni en ligne' : 'Non fourni (À déposer au club)'}`, 24, 129.5);
-      doc.text(`• Extrait de Naissance : ${extraitNaissanceBase64 ? 'Fourni en ligne' : 'Non fourni (À déposer au club)'}`, 24, 134);
-      doc.text(`• Autorisation Parentale : ${isMinor() ? (autorisationBase64 ? 'Fournie en ligne' : 'Requise (À fournir au secrétariat)') : 'Non requise (Majeur)'}`, 24, 138.5);
-      doc.text(`• Remarques / Allergies : ${data.observations_medicales || 'Aucune observation médicale particulière signalée.'}`, 24, 143);
-
-      // SECTION 4 : FRAIS D'INSCRIPTION & DROITS D'ADHÉSION
-      doc.setFillColor(248, 250, 252);
-      doc.roundedRect(18, 148, 174, 26, 3, 3, 'F');
-      doc.setDrawColor(203, 213, 225);
-      doc.setLineWidth(0.4);
-      doc.roundedRect(18, 148, 174, 26, 3, 3, 'S');
-
-      doc.setFillColor(241, 245, 249);
-      doc.roundedRect(18, 148, 174, 7, 3, 3, 'F');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      doc.setTextColor(15, 23, 42);
-      doc.text("FRAIS D'INSCRIPTION & DROITS D'ADHÉSION DU CLUB", 24, 153);
-
-      // Détail 1 : Frais d'inscription
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
-      doc.setTextColor(100, 116, 139);
-      doc.text("FRAIS D'INSCRIPTION (Dossier & Badge) :", 24, 159.5);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8.5);
-      doc.setTextColor(15, 23, 42);
-      doc.text(formatDA(fraisInscription), 88, 159.5);
-
-      // Détail 2 : Droits d'adhésion
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
-      doc.setTextColor(100, 116, 139);
-      doc.text("DROITS D'ADHÉSION / CLUB :", 112, 159.5);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8.5);
-      doc.setTextColor(15, 23, 42);
-      doc.text(formatDA(cotisationAdhesion), 166, 159.5);
-
-      // Ligne Total
-      doc.setDrawColor(226, 232, 240);
-      doc.setLineWidth(0.3);
-      doc.line(24, 163, 186, 163);
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      doc.setTextColor(15, 23, 42);
-      doc.text("TOTAL À RÉGLER :", 24, 169);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(11);
-      doc.setTextColor(16, 185, 129);
-      doc.text(formatDA(totalAdhesion), 62, 169);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7);
-      doc.setTextColor(71, 85, 105);
-      doc.text(`(Frais Inscription : ${formatDA(fraisInscription)} + Droits d'Adhésion : ${formatDA(cotisationAdhesion)})`, 86, 169);
-
-      // SECTION 5 : CONFORMITÉ LOI 18-07 & RÈGLEMENT
-      doc.setFillColor(240, 253, 244);
-      doc.roundedRect(18, 178, 174, 22, 3, 3, 'F');
-      doc.setDrawColor(134, 239, 172);
-      doc.setLineWidth(0.5);
-      doc.roundedRect(18, 178, 174, 22, 3, 3, 'S');
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
-      doc.setTextColor(21, 128, 61);
-      doc.text("✔ CONFORMITÉ LÉGALE LOI 18-07 & RÈGLEMENT INTÉRIEUR", 24, 183.5);
-
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6.8);
-      doc.setTextColor(51, 65, 85);
-      doc.text("Le candidat ou son représentant légal a consenti au traitement sécurisé de ses données personnelles et", 24, 188.5);
-      doc.text("médicales par le Sporting Club Bouira, conformément à la loi 18-07, et a accepté le règlement intérieur.", 24, 192.5);
-
-      // SECTION 6 : SIGNATURES & CACHET
-      // Cadre Adhérent
-      doc.setFillColor(255, 255, 255);
-      doc.roundedRect(18, 204, 82, 46, 3, 3, 'F');
-      doc.setDrawColor(203, 213, 225);
-      doc.setLineWidth(0.4);
-      doc.roundedRect(18, 204, 82, 46, 3, 3, 'S');
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      doc.setTextColor(15, 23, 42);
-      doc.text("Signature de l'adhérent / tuteur :", 24, 211);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6.5);
-      doc.setTextColor(148, 163, 184);
-      doc.text('(Mention "Lu et approuvé")', 24, 215);
-
-      // Cadre Administration
-      doc.setFillColor(255, 255, 255);
-      doc.roundedRect(110, 204, 82, 46, 3, 3, 'F');
-      doc.setDrawColor(203, 213, 225);
-      doc.roundedRect(110, 204, 82, 46, 3, 3, 'S');
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      doc.setTextColor(15, 23, 42);
-      doc.text("Cadre réservé à l'Administration :", 116, 211);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
-      doc.setTextColor(15, 23, 42);
-      doc.text("SPORTING CLUB BOUIRA", 116, 216);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6.5);
-      doc.setTextColor(16, 185, 129);
-      doc.text("Secrétariat Général / Caisse", 116, 220);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6.5);
-      doc.setTextColor(148, 163, 184);
-      doc.text(`Reçu : ${formatDA(totalAdhesion)} (${formatDA(fraisInscription)} + ${formatDA(cotisationAdhesion)})`, 116, 224);
-
-      // PIED DE PAGE
-      doc.setDrawColor(226, 232, 240);
-      doc.setLineWidth(0.5);
-      doc.line(18, 256, 192, 256);
-
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7);
-      doc.setTextColor(148, 163, 184);
-      doc.text(`Sporting Club Bouira · Fiche de pré-inscription générée le ${dateDemandeStr} à ${timeDemandeStr}`, 105, 261, { align: 'center' });
-      doc.text("Veuillez vous présenter au secrétariat du club muni de cette fiche pour finaliser votre inscription et retirer votre badge.", 105, 265, { align: 'center' });
-
-      // Bandeau inférieur
-      doc.setFillColor(16, 185, 129);
-      doc.rect(0, 290, 210, 2, 'F');
-      doc.setFillColor(15, 23, 42);
-      doc.rect(0, 292, 210, 5, 'F');
-
-      const fileName = `Fiche_Preinscription_${(data.nom || 'Adherent').replace(/[^a-zA-Z0-9_-]/g, '_')}_${numeroDossier}.pdf`;
-      doc.save(fileName);
-      return fileName;
     } catch (err) {
-      console.error('Erreur génération PDF pré-inscription:', err);
-      toast.error('Erreur lors de la génération du PDF : ' + err.message);
+      console.error('Erreur génération PDF dossier inscription:', err);
+      toast.error('Erreur lors de la génération du dossier PDF : ' + err.message);
       return null;
+    }
+  };
+
+  // Téléchargement du Formulaire Officiel Vierge (à imprimer / faire signer par le médecin)
+  const handleDownloadBlankForm = async () => {
+    try {
+      const toastId = toast.loading("Génération du formulaire officiel d'inscription vierge...");
+      await generateOfficialRegistrationFormPdf({
+        isBlank: true,
+        fraisInscription,
+        cotisationAdhesion
+      });
+      toast.dismiss(toastId);
+      toast.success("Formulaire vierge téléchargé avec succès !");
+    } catch (err) {
+      toast.error("Erreur lors de la génération du formulaire : " + err.message);
     }
   };
 
@@ -682,6 +383,45 @@ export default function PublicRegistration() {
           }}>
             <Sparkles size={16} color="#6366f1" />
             Portail Officiel d'Adhésion & Pré-inscription en ligne
+          </div>
+
+          {/* BANDEAU ACCÈS FORMULAIRE TOUT-EN-UN */}
+          <div style={{
+            margin: '1.5rem auto 0',
+            maxWidth: '680px',
+            backgroundColor: '#ffffff',
+            borderRadius: '16px',
+            padding: '1rem 1.25rem',
+            border: '1.5px solid #e2e8f0',
+            boxShadow: '0 4px 20px -5px rgba(0,0,0,0.05)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '12px'
+          }} className="sm:flex-row sm:justify-between">
+            <div style={{ textAlign: 'left', display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ width: '42px', height: '42px', borderRadius: '10px', backgroundColor: '#eef2ff', color: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <FileText size={22} />
+              </div>
+              <div>
+                <strong style={{ fontSize: '0.9rem', color: '#0f172a', display: 'block' }}>
+                  Formulaire d'Inscription Officiel (PDF Tout-en-Un)
+                </strong>
+                <span style={{ fontSize: '0.78rem', color: '#64748b', display: 'block' }}>
+                  Regroupe l'identité, la photo, le volet certificat médical pour le médecin et l'autorisation parentale
+                </span>
+              </div>
+            </div>
+
+            <Button 
+              type="button"
+              variant="secondary"
+              onClick={handleDownloadBlankForm}
+              style={{ padding: '0.55rem 1rem', fontSize: '0.82rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', backgroundColor: '#0f172a', color: '#ffffff', borderColor: '#0f172a' }}
+              title="Télécharger le formulaire vierge prêt à imprimer"
+            >
+              <Download size={15} /> Télécharger vierge (PDF)
+            </Button>
           </div>
         </div>
 

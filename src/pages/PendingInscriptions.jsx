@@ -33,6 +33,7 @@ import { useInscriptions } from '../hooks/useInscriptions';
 import { useRegistrationSettings } from '../hooks/useRegistrationSettings';
 import { useClubPricing } from '../hooks/useClubPricing';
 import { calculateAge, formatWhatsAppPhone, formatName, formatDA } from '../utils/formatters';
+import { generateOfficialRegistrationFormPdf } from '../utils/registrationFormPdfGenerator';
 import BadgeGenerator from '../components/BadgeGenerator';
 
 export default function PendingInscriptions() {
@@ -284,6 +285,22 @@ CREATE POLICY "Admins can delete inscriptions" ON public.inscriptions FOR DELETE
             )}
           </button>
 
+          <Button 
+            variant="secondary" 
+            onClick={async () => {
+              try {
+                toast.loading("Génération du formulaire officiel vierge...", { id: 'blank-pdf-admin' });
+                await generateOfficialRegistrationFormPdf({ isBlank: true, fraisInscription, cotisationAdhesion });
+                toast.success("Formulaire vierge téléchargé !", { id: 'blank-pdf-admin' });
+              } catch (e) {
+                toast.error("Erreur: " + e.message, { id: 'blank-pdf-admin' });
+              }
+            }}
+            style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            title="Télécharger le formulaire d'inscription officiel vierge (PDF)"
+          >
+            <Download size={15} /> Formulaire Vierge (PDF)
+          </Button>
           <Button 
             variant="secondary" 
             onClick={copyPublicLink}
@@ -1000,10 +1017,35 @@ CREATE POLICY "Admins can delete inscriptions" ON public.inscriptions FOR DELETE
             </div>
 
             {/* Modal Footer */}
-            <div className="p-4 flex justify-between items-center border-t border-[rgba(255,255,255,0.1)]" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-              <Button variant="secondary" onClick={() => setSelectedInscription(null)}>
-                Fermer
-              </Button>
+            <div className="p-4 flex flex-wrap justify-between items-center gap-3 border-t border-[rgba(255,255,255,0.1)]" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+              <div className="flex items-center gap-2">
+                <Button variant="secondary" onClick={() => setSelectedInscription(null)}>
+                  Fermer
+                </Button>
+                <Button 
+                  variant="secondary"
+                  onClick={async () => {
+                    try {
+                      toast.loading("Génération de la fiche d'inscription officielle...", { id: 'print-dossier' });
+                      await generateOfficialRegistrationFormPdf({
+                        data: selectedInscription,
+                        numeroDossier: selectedInscription.numero_dossier,
+                        photoBase64: selectedInscription.photo,
+                        fraisInscription,
+                        cotisationAdhesion,
+                        selectedGroupeNom: selectedInscription.groupes?.nom || selectedInscription.groupe_nom
+                      });
+                      toast.success("Fiche PDF générée et téléchargée !", { id: 'print-dossier' });
+                    } catch (e) {
+                      toast.error("Erreur: " + e.message, { id: 'print-dossier' });
+                    }
+                  }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                  title="Télécharger la fiche officielle complète au format PDF"
+                >
+                  <Printer size={15} /> Fiche Officielle (PDF)
+                </Button>
+              </div>
 
               {selectedInscription.statut === 'EN_ATTENTE' && (
                 <div className="flex gap-3">
