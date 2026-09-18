@@ -27,7 +27,8 @@ import {
   Sparkles,
   Lock,
   Unlock,
-  RefreshCw
+  RefreshCw,
+  Download
 } from 'lucide-react';
 import { Card, Button, Skeleton } from '../components/ui';
 import { useInscriptions } from '../hooks/useInscriptions';
