@@ -217,6 +217,7 @@ CREATE TABLE IF NOT EXISTS public.inscriptions (
   photo TEXT,
   certificat_medical TEXT,
   autorisation_parentale TEXT,
+  extrait_naissance TEXT,
   consentement_loi_18_07 BOOLEAN DEFAULT true NOT NULL,
   reglement_accepte BOOLEAN DEFAULT true NOT NULL,
   statut TEXT CHECK (statut IN ('EN_ATTENTE', 'VALIDE', 'REJETE')) DEFAULT 'EN_ATTENTE',
@@ -624,6 +625,21 @@ CREATE POLICY "Admins can delete inscriptions" ON public.inscriptions FOR DELETE
                             Médical {item.certificat_medical ? '✔' : '❌'}
                           </span>
 
+                          {/* Extrait de naissance */}
+                          <span 
+                            title={item.extrait_naissance ? "Extrait de naissance fourni" : "Extrait de naissance manquant"}
+                            style={{ 
+                              padding: '2px 6px', 
+                              borderRadius: '6px', 
+                              fontSize: '0.68rem', 
+                              fontWeight: 700, 
+                              backgroundColor: item.extrait_naissance ? 'rgba(2, 132, 199, 0.15)' : 'rgba(239, 68, 68, 0.15)', 
+                              color: item.extrait_naissance ? '#0284c7' : '#ef4444' 
+                            }}
+                          >
+                            Extrait {item.extrait_naissance ? '✔' : '❌'}
+                          </span>
+
                           {/* Autorisation parentale (Obligatoire si mineur) */}
                           {isMinor ? (
                             <span 
@@ -842,7 +858,7 @@ CREATE POLICY "Admins can delete inscriptions" ON public.inscriptions FOR DELETE
                 <h4 style={{ margin: '0 0 10px', fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                   Pièces Justificatives Joints
                 </h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {/* Certificat Médical */}
                   <div style={{ padding: '14px', borderRadius: '10px', backgroundColor: 'rgba(30, 41, 59, 0.5)', border: `1px solid ${selectedInscription.certificat_medical ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}` }}>
                     <div className="flex justify-between items-center mb-2">
@@ -863,6 +879,29 @@ CREATE POLICY "Admins can delete inscriptions" ON public.inscriptions FOR DELETE
                     </div>
                     <span className="text-xs text-muted block">
                       {selectedInscription.certificat_medical ? 'Document téléversé par le candidat' : 'Obligatoire avant délivrance du badge officiel'}
+                    </span>
+                  </div>
+
+                  {/* Extrait de Naissance */}
+                  <div style={{ padding: '14px', borderRadius: '10px', backgroundColor: 'rgba(30, 41, 59, 0.5)', border: `1px solid ${selectedInscription.extrait_naissance ? 'rgba(2, 132, 199, 0.3)' : 'rgba(255, 255, 255, 0.08)'}` }}>
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="font-semibold text-sm flex items-center gap-2">
+                        <FileText size={16} color={selectedInscription.extrait_naissance ? '#0284c7' : '#94a3b8'} /> Extrait de Naissance
+                      </span>
+                      {selectedInscription.extrait_naissance ? (
+                        <Button 
+                          variant="secondary" 
+                          style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem' }}
+                          onClick={() => setDocumentViewer({ isOpen: true, title: 'Extrait de Naissance', src: selectedInscription.extrait_naissance })}
+                        >
+                          <Eye size={13} /> Visualiser
+                        </Button>
+                      ) : (
+                        <span className="text-muted text-xs">Non fourni</span>
+                      )}
+                    </div>
+                    <span className="text-xs text-muted block">
+                      {selectedInscription.extrait_naissance ? 'Justificatif d\'état civil téléversé' : 'À vérifier lors du dépôt physique'}
                     </span>
                   </div>
 

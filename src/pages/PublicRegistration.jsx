@@ -83,6 +83,8 @@ export default function PublicRegistration() {
   const [certificatFileName, setCertificatFileName] = useState('');
   const [autorisationBase64, setAutorisationBase64] = useState(null);
   const [autorisationFileName, setAutorisationFileName] = useState('');
+  const [extraitNaissanceBase64, setExtraitNaissanceBase64] = useState(null);
+  const [extraitNaissanceFileName, setExtraitNaissanceFileName] = useState('');
 
   // Vérifier si l'adhérent est mineur (< 18 ans)
   const isMinor = () => {
@@ -158,6 +160,17 @@ export default function PublicRegistration() {
     const compressed = await compressImageFile(file, 1200, 1600, 0.75);
     if (compressed) {
       setAutorisationBase64(compressed);
+    }
+  };
+
+  // Upload Extrait de Naissance avec compression
+  const handleExtraitNaissanceUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setExtraitNaissanceFileName(file.name);
+    const compressed = await compressImageFile(file, 1200, 1600, 0.75);
+    if (compressed) {
+      setExtraitNaissanceBase64(compressed);
     }
   };
 
@@ -340,9 +353,9 @@ export default function PublicRegistration() {
 
       // SECTION 3 : SANTÉ & DOCUMENTS JOINTS
       doc.setFillColor(248, 250, 252);
-      doc.roundedRect(18, 118, 174, 28, 3, 3, 'F');
+      doc.roundedRect(18, 118, 174, 30, 3, 3, 'F');
       doc.setDrawColor(226, 232, 240);
-      doc.roundedRect(18, 118, 174, 28, 3, 3, 'S');
+      doc.roundedRect(18, 118, 174, 30, 3, 3, 'S');
 
       doc.setFillColor(241, 245, 249);
       doc.roundedRect(18, 118, 174, 7, 3, 3, 'F');
@@ -352,11 +365,12 @@ export default function PublicRegistration() {
       doc.text("PIÈCES DU DOSSIER & INFORMATIONS MÉDICALES", 24, 123);
 
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7.5);
+      doc.setFontSize(7.2);
       doc.setTextColor(30, 41, 59);
-      doc.text(`• Certificat Médical : ${certificatBase64 ? 'Fourni en ligne' : 'Non fourni (À déposer au club)'}`, 24, 131);
-      doc.text(`• Autorisation Parentale : ${isMinor() ? (autorisationBase64 ? 'Fournie en ligne' : 'Requise (À fournir au secrétariat)') : 'Non requise (Majeur)'}`, 24, 136);
-      doc.text(`• Remarques / Allergies : ${data.observations_medicales || 'Aucune observation médicale particulière signalée.'}`, 24, 141);
+      doc.text(`• Certificat Médical : ${certificatBase64 ? 'Fourni en ligne' : 'Non fourni (À déposer au club)'}`, 24, 129.5);
+      doc.text(`• Extrait de Naissance : ${extraitNaissanceBase64 ? 'Fourni en ligne' : 'Non fourni (À déposer au club)'}`, 24, 134);
+      doc.text(`• Autorisation Parentale : ${isMinor() ? (autorisationBase64 ? 'Fournie en ligne' : 'Requise (À fournir au secrétariat)') : 'Non requise (Majeur)'}`, 24, 138.5);
+      doc.text(`• Remarques / Allergies : ${data.observations_medicales || 'Aucune observation médicale particulière signalée.'}`, 24, 143);
 
       // SECTION 4 : FRAIS D'INSCRIPTION & DROITS D'ADHÉSION
       doc.setFillColor(248, 250, 252);
@@ -554,6 +568,7 @@ export default function PublicRegistration() {
         photo: photoBase64 || null,
         certificat_medical: certificatBase64 || null,
         autorisation_parentale: autorisationBase64 || null,
+        extrait_naissance: extraitNaissanceBase64 || null,
         consentement_loi_18_07: true,
         reglement_accepte: true,
         statut: 'EN_ATTENTE'
@@ -776,7 +791,11 @@ export default function PublicRegistration() {
                     });
                     setPhotoBase64(null);
                     setCertificatBase64(null);
+                    setCertificatFileName('');
                     setAutorisationBase64(null);
+                    setAutorisationFileName('');
+                    setExtraitNaissanceBase64(null);
+                    setExtraitNaissanceFileName('');
                     setErrors({});
                   }}
                   style={{ padding: '0.75rem 1.5rem', fontSize: '0.9rem' }}
@@ -1042,104 +1061,168 @@ export default function PublicRegistration() {
 
               {/* SECTION 2 : TÉLÉCHARGEMENT DE DOCUMENTS */}
               <div className="mb-8">
-                <div className="flex items-center gap-3 mb-6 pb-3 border-b border-[#e2e8f0]">
+                <div className="flex items-center gap-3 mb-4 pb-3 border-b border-[#e2e8f0]">
                   <div style={{ padding: '8px', borderRadius: '10px', backgroundColor: '#ecfdf5', color: '#059669' }}>
                     <UploadCloud size={20} />
                   </div>
                   <div>
                     <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0f172a' }}>
-                      2. Téléchargement des Documents & Photo
+                      2. Téléchargement des Documents & Pièces Justificatives
                     </h3>
-                    <span style={{ fontSize: '0.78rem', color: '#64748b' }}>Les images sont automatiquement optimisées avant l'envoi</span>
+                    <span style={{ fontSize: '0.78rem', color: '#64748b' }}>Pièces à joindre pour la validation de votre dossier d'adhésion</span>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                  {/* Photo d'identité */}
-                  <div style={{ padding: '1.25rem', borderRadius: '14px', backgroundColor: '#f8fafc', border: '1.5px dashed #cbd5e1', textAlign: 'center' }}>
-                    <Camera size={26} color="#6366f1" style={{ margin: '0 auto 8px' }} />
-                    <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a', display: 'block', marginBottom: '4px' }}>
-                      Photo d'identité
-                    </span>
-                    <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginBottom: '12px' }}>
-                      Pour le Badge QR officiel
-                    </span>
-                    {photoBase64 ? (
-                      <div style={{ position: 'relative', width: '84px', height: '105px', margin: '0 auto 10px', borderRadius: '10px', overflow: 'hidden', border: '2px solid #6366f1', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
-                        <img src={photoBase64} alt="Aperçu photo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                      </div>
-                    ) : null}
-                    <input 
-                      type="file" 
-                      id="photo-upload" 
-                      accept="image/*" 
-                      onChange={handlePhotoUpload} 
-                      style={{ display: 'none' }} 
-                    />
-                    <label 
-                      htmlFor="photo-upload" 
-                      style={{ display: 'inline-block', padding: '7px 14px', fontSize: '0.78rem', borderRadius: '8px', backgroundColor: '#eef2ff', color: '#6366f1', cursor: 'pointer', fontWeight: 700, border: '1px solid #c7d2fe' }}
-                    >
-                      {photoBase64 ? 'Changer la photo' : 'Sélectionner une photo'}
-                    </label>
+                {/* Bandeau explicatif des 4 documents requis */}
+                <div style={{ 
+                  padding: '10px 14px', 
+                  backgroundColor: '#f8fafc', 
+                  borderRadius: '10px', 
+                  border: '1px solid #e2e8f0', 
+                  marginBottom: '1rem',
+                  fontSize: '0.8rem',
+                  color: '#475569',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <AlertCircle size={16} color="#6366f1" style={{ flexShrink: 0 }} />
+                  <span>
+                    <strong>Documents pour la pré-inscription :</strong> 1. Photo d'identité · 2. Certificat médical · 3. Extrait de naissance · 4. Autorisation parentale (si mineur).
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {/* 1. Photo d'identité */}
+                  <div style={{ padding: '1.2rem 1rem', borderRadius: '14px', backgroundColor: '#f8fafc', border: photoBase64 ? '1.5px solid #6366f1' : '1.5px dashed #cbd5e1', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                    <div>
+                      <Camera size={26} color="#6366f1" style={{ margin: '0 auto 6px' }} />
+                      <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a', display: 'block', marginBottom: '2px' }}>
+                        Photo d'identité
+                      </span>
+                      <span style={{ fontSize: '0.73rem', color: '#64748b', display: 'block', marginBottom: '10px' }}>
+                        Pour le Badge QR officiel
+                      </span>
+                      {photoBase64 ? (
+                        <div style={{ position: 'relative', width: '75px', height: '95px', margin: '0 auto 10px', borderRadius: '8px', overflow: 'hidden', border: '2px solid #6366f1', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
+                          <img src={photoBase64} alt="Aperçu photo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        </div>
+                      ) : null}
+                    </div>
+                    <div>
+                      <input 
+                        type="file" 
+                        id="photo-upload" 
+                        accept="image/*" 
+                        onChange={handlePhotoUpload} 
+                        style={{ display: 'none' }} 
+                      />
+                      <label 
+                        htmlFor="photo-upload" 
+                        style={{ display: 'inline-block', width: '100%', padding: '7px 10px', fontSize: '0.78rem', borderRadius: '8px', backgroundColor: photoBase64 ? '#eef2ff' : '#ffffff', color: '#6366f1', cursor: 'pointer', fontWeight: 700, border: '1px solid #c7d2fe', transition: 'all 0.2s' }}
+                      >
+                        {photoBase64 ? 'Changer la photo' : 'Importer photo'}
+                      </label>
+                    </div>
                   </div>
 
-                  {/* Certificat Médical */}
-                  <div style={{ padding: '1.25rem', borderRadius: '14px', backgroundColor: '#f8fafc', border: '1.5px dashed #cbd5e1', textAlign: 'center' }}>
-                    <HeartPulse size={26} color="#059669" style={{ margin: '0 auto 8px' }} />
-                    <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a', display: 'block', marginBottom: '4px' }}>
-                      Certificat Médical
-                    </span>
-                    <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginBottom: '12px' }}>
-                      Aptitude sportive (Photo ou scan)
-                    </span>
-                    {certificatFileName ? (
-                      <div style={{ fontSize: '0.78rem', color: '#059669', marginBottom: '10px', wordBreak: 'break-all', fontWeight: 700 }}>
-                        ✔ {certificatFileName}
-                      </div>
-                    ) : null}
-                    <input 
-                      type="file" 
-                      id="certificat-upload" 
-                      accept="image/*,application/pdf" 
-                      onChange={handleCertificatUpload} 
-                      style={{ display: 'none' }} 
-                    />
-                    <label 
-                      htmlFor="certificat-upload" 
-                      style={{ display: 'inline-block', padding: '7px 14px', fontSize: '0.78rem', borderRadius: '8px', backgroundColor: '#ecfdf5', color: '#059669', cursor: 'pointer', fontWeight: 700, border: '1px solid #a7f3d0' }}
-                    >
-                      {certificatBase64 ? 'Remplacer le fichier' : 'Importer le certificat'}
-                    </label>
+                  {/* 2. Certificat Médical */}
+                  <div style={{ padding: '1.2rem 1rem', borderRadius: '14px', backgroundColor: '#f8fafc', border: certificatBase64 ? '1.5px solid #059669' : '1.5px dashed #cbd5e1', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                    <div>
+                      <HeartPulse size={26} color="#059669" style={{ margin: '0 auto 6px' }} />
+                      <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a', display: 'block', marginBottom: '2px' }}>
+                        Certificat Médical
+                      </span>
+                      <span style={{ fontSize: '0.73rem', color: '#64748b', display: 'block', marginBottom: '10px' }}>
+                        Aptitude sportive (Scan / PDF)
+                      </span>
+                      {certificatFileName ? (
+                        <div style={{ fontSize: '0.75rem', color: '#059669', marginBottom: '8px', wordBreak: 'break-all', fontWeight: 700 }}>
+                          ✔ {certificatFileName}
+                        </div>
+                      ) : null}
+                    </div>
+                    <div>
+                      <input 
+                        type="file" 
+                        id="certificat-upload" 
+                        accept="image/*,application/pdf" 
+                        onChange={handleCertificatUpload} 
+                        style={{ display: 'none' }} 
+                      />
+                      <label 
+                        htmlFor="certificat-upload" 
+                        style={{ display: 'inline-block', width: '100%', padding: '7px 10px', fontSize: '0.78rem', borderRadius: '8px', backgroundColor: certificatBase64 ? '#ecfdf5' : '#ffffff', color: '#059669', cursor: 'pointer', fontWeight: 700, border: '1px solid #a7f3d0', transition: 'all 0.2s' }}
+                      >
+                        {certificatBase64 ? 'Remplacer fichier' : 'Importer certificat'}
+                      </label>
+                    </div>
                   </div>
 
-                  {/* Autorisation Parentale */}
-                  <div style={{ padding: '1.25rem', borderRadius: '14px', backgroundColor: '#f8fafc', border: '1.5px dashed #cbd5e1', textAlign: 'center' }}>
-                    <ShieldCheck size={26} color="#d97706" style={{ margin: '0 auto 8px' }} />
-                    <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a', display: 'block', marginBottom: '4px' }}>
-                      Autorisation Parentale
-                    </span>
-                    <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginBottom: '12px' }}>
-                      {isMinor() ? <strong style={{ color: '#d97706' }}>Obligatoire (Moins de 18 ans)</strong> : 'Non requise pour majeurs'}
-                    </span>
-                    {autorisationFileName ? (
-                      <div style={{ fontSize: '0.78rem', color: '#d97706', marginBottom: '10px', wordBreak: 'break-all', fontWeight: 700 }}>
-                        ✔ {autorisationFileName}
-                      </div>
-                    ) : null}
-                    <input 
-                      type="file" 
-                      id="autorisation-upload" 
-                      accept="image/*,application/pdf" 
-                      onChange={handleAutorisationUpload} 
-                      style={{ display: 'none' }} 
-                    />
-                    <label 
-                      htmlFor="autorisation-upload" 
-                      style={{ display: 'inline-block', padding: '7px 14px', fontSize: '0.78rem', borderRadius: '8px', backgroundColor: '#fffbeb', color: '#d97706', cursor: 'pointer', fontWeight: 700, border: '1px solid #fde68a' }}
-                    >
-                      {autorisationBase64 ? 'Remplacer le document' : 'Importer l\'autorisation'}
-                    </label>
+                  {/* 3. Extrait de Naissance */}
+                  <div style={{ padding: '1.2rem 1rem', borderRadius: '14px', backgroundColor: '#f8fafc', border: extraitNaissanceBase64 ? '1.5px solid #0284c7' : '1.5px dashed #cbd5e1', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                    <div>
+                      <FileText size={26} color="#0284c7" style={{ margin: '0 auto 6px' }} />
+                      <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a', display: 'block', marginBottom: '2px' }}>
+                        Extrait de Naissance
+                      </span>
+                      <span style={{ fontSize: '0.73rem', color: '#64748b', display: 'block', marginBottom: '10px' }}>
+                        État civil (Scan / Photo)
+                      </span>
+                      {extraitNaissanceFileName ? (
+                        <div style={{ fontSize: '0.75rem', color: '#0284c7', marginBottom: '8px', wordBreak: 'break-all', fontWeight: 700 }}>
+                          ✔ {extraitNaissanceFileName}
+                        </div>
+                      ) : null}
+                    </div>
+                    <div>
+                      <input 
+                        type="file" 
+                        id="extrait-naissance-upload" 
+                        accept="image/*,application/pdf" 
+                        onChange={handleExtraitNaissanceUpload} 
+                        style={{ display: 'none' }} 
+                      />
+                      <label 
+                        htmlFor="extrait-naissance-upload" 
+                        style={{ display: 'inline-block', width: '100%', padding: '7px 10px', fontSize: '0.78rem', borderRadius: '8px', backgroundColor: extraitNaissanceBase64 ? '#f0f9ff' : '#ffffff', color: '#0284c7', cursor: 'pointer', fontWeight: 700, border: '1px solid #bae6fd', transition: 'all 0.2s' }}
+                      >
+                        {extraitNaissanceBase64 ? 'Remplacer fichier' : 'Importer extrait'}
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* 4. Autorisation Parentale */}
+                  <div style={{ padding: '1.2rem 1rem', borderRadius: '14px', backgroundColor: '#f8fafc', border: autorisationBase64 ? '1.5px solid #d97706' : '1.5px dashed #cbd5e1', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                    <div>
+                      <ShieldCheck size={26} color="#d97706" style={{ margin: '0 auto 6px' }} />
+                      <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a', display: 'block', marginBottom: '2px' }}>
+                        Autorisation Parentale
+                      </span>
+                      <span style={{ fontSize: '0.73rem', color: '#64748b', display: 'block', marginBottom: '10px' }}>
+                        {isMinor() ? <strong style={{ color: '#d97706' }}>Obligatoire (&lt; 18 ans)</strong> : 'Non requise (Majeur)'}
+                      </span>
+                      {autorisationFileName ? (
+                        <div style={{ fontSize: '0.75rem', color: '#d97706', marginBottom: '8px', wordBreak: 'break-all', fontWeight: 700 }}>
+                          ✔ {autorisationFileName}
+                        </div>
+                      ) : null}
+                    </div>
+                    <div>
+                      <input 
+                        type="file" 
+                        id="autorisation-upload" 
+                        accept="image/*,application/pdf" 
+                        onChange={handleAutorisationUpload} 
+                        style={{ display: 'none' }} 
+                      />
+                      <label 
+                        htmlFor="autorisation-upload" 
+                        style={{ display: 'inline-block', width: '100%', padding: '7px 10px', fontSize: '0.78rem', borderRadius: '8px', backgroundColor: autorisationBase64 ? '#fffbeb' : '#ffffff', color: '#d97706', cursor: 'pointer', fontWeight: 700, border: '1px solid #fde68a', transition: 'all 0.2s' }}
+                      >
+                        {autorisationBase64 ? 'Remplacer document' : 'Importer autorisation'}
+                      </label>
+                    </div>
                   </div>
                 </div>
 
