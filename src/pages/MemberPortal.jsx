@@ -5,7 +5,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { 
   LogOut, CreditCard, Activity, CheckCircle, AlertTriangle, 
   User, Shield, ChevronRight, Phone, Calendar, Megaphone,
-  TrendingUp, Timer, Award, FileText, Globe
+  TrendingUp, Timer, Award, FileText, Globe, Waves
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
