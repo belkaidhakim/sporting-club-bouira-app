@@ -127,7 +127,7 @@ export default function AthleteForm() {
       const base64 = await compressImageFile(file, 1200, 1600, 0.75);
       if (base64) {
         setFormData(prev => ({ ...prev, [fieldName]: base64 }));
-        toast.success('Document mis à jour en mémoire. N\\'oubliez pas de sauvegarder.');
+        toast.success("Document mis à jour en mémoire. N'oubliez pas de sauvegarder.");
       }
     } catch (err) {
       toast.error('Erreur lors du chargement du fichier.');
