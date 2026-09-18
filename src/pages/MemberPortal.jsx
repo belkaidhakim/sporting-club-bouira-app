@@ -1,12 +1,96 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
 import toast from 'react-hot-toast';
 import { QRCodeSVG } from 'qrcode.react';
-import { LogOut, CreditCard, Calendar, Activity, CheckCircle, AlertTriangle, User, Shield, ChevronRight } from 'lucide-react';
+import { 
+  LogOut, CreditCard, Activity, CheckCircle, AlertTriangle, 
+  User, Shield, ChevronRight, Phone, Calendar, Megaphone,
+  TrendingUp, Timer, Award, FileText, Globe
+} from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
+import { 
+  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, 
+  CartesianGrid, ReferenceLine 
+} from 'recharts';
+import { SWIMMING_EVENTS } from '../utils/swimmingCategories';
+
+// --- TRADUCTIONS ---
+const translations = {
+  fr: {
+    loginTitle: 'Espace Adhérent',
+    loginSubtitle: 'Accédez à votre carte d\'accès et vos performances',
+    identifiant: 'MATRICULE OU TÉLÉPHONE',
+    identifiantPlaceholder: 'Ex: SCB-1234 ou 0555...',
+    pin: 'CODE PIN (DATE DE NAISSANCE)',
+    loginBtn: 'Se connecter',
+    support: 'Un problème de connexion ?',
+    contactAdmin: 'Contactez l\'administration',
+    welcome: 'Bonjour',
+    dashboard: 'Tableau de bord',
+    performances: 'Mes Chronos',
+    announcements: 'Annonces Club',
+    logout: 'Déconnexion',
+    status: 'Statut Abonnement',
+    medical: 'Certificat Médical',
+    digitalCard: 'Carte Numérique',
+    validUntil: 'Valable jusqu\'au',
+    noPayment: 'Aucun paiement',
+    expired: 'Expiré',
+    active: 'Actif',
+    valid: 'Valide',
+    invalid: 'Non fourni ou expiré',
+    history: 'Historique de paiements',
+    noHistory: 'Aucun paiement enregistré.',
+    paidOn: 'Payé le',
+    amount: 'Montant',
+    clubNotes: 'Notes du club',
+    noNotes: 'Aucune annonce pour le moment.',
+    perfTitle: 'Évolution de vos performances',
+    noPerf: 'Aucun chrono enregistré. Entraînez-vous dur !',
+    event: 'Épreuve',
+    bestTime: 'Meilleur Temps (PB)'
+  },
+  ar: {
+    loginTitle: 'فضاء المنخرط',
+    loginSubtitle: 'قم بالوصول إلى بطاقة الدخول الخاصة بك وأدائك',
+    identifiant: 'رقم التسجيل أو الهاتف',
+    identifiantPlaceholder: 'مثال: SCB-1234 أو 0555...',
+    pin: 'الرمز السري (تاريخ الميلاد)',
+    loginBtn: 'تسجيل الدخول',
+    support: 'مشكلة في الاتصال؟',
+    contactAdmin: 'اتصل بالإدارة',
+    welcome: 'مرحباً',
+    dashboard: 'لوحة القيادة',
+    performances: 'أدائي (الكرونو)',
+    announcements: 'إعلانات النادي',
+    logout: 'تسجيل الخروج',
+    status: 'حالة الاشتراك',
+    medical: 'الشهادة الطبية',
+    digitalCard: 'البطاقة الرقمية',
+    validUntil: 'صالح حتى',
+    noPayment: 'لا يوجد دفع',
+    expired: 'منتهي الصلاحية',
+    active: 'نشط',
+    valid: 'صالح',
+    invalid: 'غير متوفر أو منتهي',
+    history: 'سجل المدفوعات',
+    noHistory: 'لا توجد مدفوعات مسجلة.',
+    paidOn: 'تم الدفع في',
+    amount: 'المبلغ',
+    clubNotes: 'ملاحظات النادي',
+    noNotes: 'لا توجد إعلانات في الوقت الحالي.',
+    perfTitle: 'تطور أدائك',
+    noPerf: 'لم يتم تسجيل أي وقت بعد. تدرب بجد!',
+    event: 'التخصص',
+    bestTime: 'أفضل وقت (PB)'
+  }
+};
 
 export default function MemberPortal() {
+  const [lang, setLang] = useState('fr');
+  const t = translations[lang];
+
   const [session, setSession] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem('member_session'));
@@ -15,38 +99,48 @@ export default function MemberPortal() {
     }
   });
 
-  const [loginData, setLoginData] = useState({ nom: '', prenom: '', date_naissance: '' });
+  const [loginData, setLoginData] = useState({ identifiant: '', date_naissance: '' });
   const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard', 'performances', 'announcements'
+  
+  // Data for performances
+  const [performances, setPerformances] = useState([]);
+
   const { theme } = useTheme();
   const isDark = theme === 'dark';
 
-  // Theme-aware colors
   const colors = {
     bgMain: isDark ? '#0f172a' : '#f8fafc',
     bgCard: isDark ? '#1e293b' : '#ffffff',
     textMain: isDark ? '#f8fafc' : '#0f172a',
     textMuted: isDark ? '#94a3b8' : '#64748b',
     border: isDark ? '#334155' : '#e2e8f0',
-    primary: '#2563eb',
-    primaryHover: '#1d4ed8',
+    primary: '#38bdf8',
+    primaryHover: '#0284c7',
   };
 
   useEffect(() => {
     if (session?.id) {
       fetchAthleteData(session.id);
+      loadPerformances(session.id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const loadPerformances = (athleteId) => {
+    const localSwim = localStorage.getItem(`scb_athlete_perfs_${athleteId}`);
+    if (localSwim) {
+      try {
+        setPerformances(JSON.parse(localSwim));
+      } catch {}
+    }
+  };
 
   const fetchAthleteData = async (athleteId) => {
     try {
       const { data } = await supabase
         .from('athletes')
-        .select(`
-          *,
-          cotisations (*),
-          cartes_acces (*)
-        `)
+        .select(`*, cotisations (*), cartes_acces (*)`)
         .eq('id', athleteId)
         .single();
       
@@ -65,26 +159,34 @@ export default function MemberPortal() {
     e.preventDefault();
     setLoading(true);
     try {
+      // Rechercher l'athlète par date de naissance en premier
       const { data, error } = await supabase
         .from('athletes')
-        .select(`
-          *,
-          cotisations (*),
-          cartes_acces (*)
-        `)
-        .ilike('nom', loginData.nom.trim())
-        .ilike('prenom', loginData.prenom.trim())
+        .select(`*, cotisations (*), cartes_acces (*)`)
         .eq('date_naissance', loginData.date_naissance);
 
       if (error) throw error;
       
       if (data && data.length > 0) {
-        const athlete = data[0];
-        setSession(athlete);
-        localStorage.setItem('member_session', JSON.stringify(athlete));
-        toast.success(`Bienvenue ${athlete.prenom} !`);
+        const ident = loginData.identifiant.toLowerCase().trim();
+        // Filtrer par Matricule, ou Téléphone
+        const matched = data.find(a => 
+          (a.token_qr && a.token_qr.toLowerCase() === ident) ||
+          (a.telephone && a.telephone.replace(/\s+/g, '') === ident.replace(/\s+/g, '')) ||
+          (a.telephone_tuteur && a.telephone_tuteur.replace(/\s+/g, '') === ident.replace(/\s+/g, '')) ||
+          (a.nom && a.nom.toLowerCase() === ident) // fallback si nom de famille
+        );
+
+        if (matched) {
+          setSession(matched);
+          localStorage.setItem('member_session', JSON.stringify(matched));
+          loadPerformances(matched.id);
+          toast.success(`${t.welcome} ${matched.prenom} !`);
+        } else {
+          toast.error("Identifiant incorrect pour cette date de naissance.");
+        }
       } else {
-        toast.error("Aucun dossier ne correspond à ces informations.");
+        toast.error("Aucun dossier ne correspond à ce code PIN (Date).");
       }
     } catch (err) {
       toast.error("Erreur de connexion.");
@@ -96,6 +198,7 @@ export default function MemberPortal() {
   const handleLogout = () => {
     setSession(null);
     localStorage.removeItem('member_session');
+    setPerformances([]);
   };
 
   const getLatestCotisation = () => {
@@ -105,228 +208,418 @@ export default function MemberPortal() {
 
   const getStatus = () => {
     const latest = getLatestCotisation();
-    if (!latest) return { text: "Aucun paiement", color: "#ef4444", icon: <AlertTriangle size={16}/>, label: "Non réglé" };
+    if (!latest) return { color: "#ef4444", icon: <AlertTriangle size={16}/>, label: t.noPayment };
     
     const endDate = new Date(latest.periode_couverte_fin);
     const now = new Date();
     
     if (endDate >= now) {
-      return { text: "Actif", color: "#10b981", icon: <CheckCircle size={16}/>, label: "Abonnement Actif" };
+      return { color: "#10b981", icon: <CheckCircle size={16}/>, label: t.active, ok: true };
     } else {
-      return { text: "Expiré", color: "#f59e0b", icon: <AlertTriangle size={16}/>, label: "Renouvellement requis" };
+      return { color: "#ef4444", icon: <AlertTriangle size={16}/>, label: t.expired, ok: false };
     }
   };
 
+  const getMedicalStatus = () => {
+    // Dans la DB, certificat_medical est censé être une URL ou boolean ou date
+    // Pour simplifier l'UI: on va vérifier s'il existe (url)
+    if (session?.certificat_medical) {
+       return { color: "#10b981", icon: <CheckCircle size={16}/>, label: t.valid, ok: true };
+    }
+    return { color: "#f59e0b", icon: <AlertTriangle size={16}/>, label: t.invalid, ok: false };
+  };
+
+  // Graphique des performances (on prend la nage la plus pratiquée par défaut)
+  const chartData = useMemo(() => {
+    if (performances.length === 0) return [];
+    
+    // Trouver l'épreuve avec le plus de chronos
+    const eventCounts = {};
+    performances.forEach(p => eventCounts[p.event_id] = (eventCounts[p.event_id] || 0) + 1);
+    const topEventId = Object.keys(eventCounts).sort((a, b) => eventCounts[b] - eventCounts[a])[0];
+
+    const perfs = performances.filter(p => p.event_id === topEventId).sort((a, b) => new Date(a.date_perf) - new Date(b.date_perf));
+    
+    return perfs.map(p => ({
+      date: new Date(p.date_perf).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }),
+      temps: p.seconds,
+      chrono: p.chrono_str,
+      label: p.event_label
+    }));
+  }, [performances]);
+
+  // --- RENDU LOGIN ---
   if (!session) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 font-sans transition-colors duration-300" style={{ backgroundColor: colors.bgMain }}>
+      <div 
+        className="min-h-screen flex items-center justify-center p-4 font-sans relative"
+        dir={lang === 'ar' ? 'rtl' : 'ltr'}
+      >
+        {/* Background Image assombrie */}
+        <div 
+          className="absolute inset-0 z-0 bg-cover bg-center" 
+          style={{ 
+            backgroundImage: "url('https://images.unsplash.com/photo-1519315901367-f34ff9154487?q=80&w=2000&auto=format&fit=crop')",
+            filter: "brightness(0.3) saturate(1.2)"
+          }} 
+        />
+
+        <div className="absolute top-6 right-6 z-20 flex gap-2">
+           <button 
+             onClick={() => setLang('fr')} 
+             className={`px-3 py-1 rounded-lg text-xs font-bold backdrop-blur-md border transition-all ${lang === 'fr' ? 'bg-sky-500 text-white border-sky-400' : 'bg-white/10 text-white/70 border-white/20'}`}
+           >
+             FR
+           </button>
+           <button 
+             onClick={() => setLang('ar')} 
+             className={`px-3 py-1 rounded-lg text-xs font-bold backdrop-blur-md border transition-all ${lang === 'ar' ? 'bg-sky-500 text-white border-sky-400' : 'bg-white/10 text-white/70 border-white/20'}`}
+           >
+             العربية
+           </button>
+        </div>
+
         <div className="absolute top-6 left-6 z-20">
-          <Link to="/" className="flex items-center gap-2 font-bold transition-colors" style={{ color: colors.textMuted }}>
-            <span className="hidden sm:inline" style={{ color: colors.textMain }}>Retour au site</span>
+          <Link to="/" className="flex items-center gap-2 font-bold text-white/70 hover:text-white transition-colors">
+            <span className="hidden sm:inline">← {lang === 'ar' ? 'العودة للموقع' : 'Retour au site'}</span>
           </Link>
         </div>
 
-        <div className="w-full max-w-md" style={{ backgroundColor: colors.bgCard, border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '2.5rem', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)' }}>
+        {/* Login Box */}
+        <div className="w-full max-w-md relative z-10 p-8 rounded-3xl backdrop-blur-xl bg-black/40 border border-white/10 shadow-2xl">
           <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold mb-2" style={{ color: colors.textMain }}>Espace Adhérent</h1>
-            <p className="text-sm" style={{ color: colors.textMuted }}>Saisissez vos informations pour vous connecter.</p>
+            <div className="w-20 h-20 mx-auto mb-4 bg-sky-500 rounded-2xl flex items-center justify-center shadow-lg shadow-sky-500/20">
+              <Waves color="white" size={40} />
+            </div>
+            <h1 className="text-3xl font-extrabold mb-2 text-white">{t.loginTitle}</h1>
+            <p className="text-sm text-sky-200/80">{t.loginSubtitle}</p>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-4">
+          <form onSubmit={handleLogin} className="space-y-5">
             <div>
-              <label className="block text-sm font-semibold mb-1" style={{ color: colors.textMain }}>NOM DE FAMILLE</label>
-              <input 
-                type="text" 
-                required 
-                placeholder="EX: DUPONT"
-                className="w-full px-4 py-3 rounded-lg border focus:outline-none transition-colors"
-                style={{ backgroundColor: isDark ? '#0f172a' : '#f8fafc', borderColor: colors.border, color: colors.textMain }}
-                value={loginData.nom}
-                onChange={e => setLoginData({...loginData, nom: e.target.value.toUpperCase()})}
-              />
+              <label className="block text-xs font-bold mb-1.5 text-white/80 tracking-wider">
+                {t.identifiant}
+              </label>
+              <div className="relative">
+                <div className={`absolute inset-y-0 ${lang === 'ar' ? 'right-0 pr-3' : 'left-0 pl-3'} flex items-center pointer-events-none`}>
+                  <User size={18} className="text-white/40" />
+                </div>
+                <input 
+                  type="text" 
+                  required 
+                  placeholder={t.identifiantPlaceholder}
+                  className={`w-full ${lang === 'ar' ? 'pr-10 pl-4' : 'pl-10 pr-4'} py-3 rounded-xl focus:outline-none transition-all text-white font-medium`}
+                  style={{ backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+                  value={loginData.identifiant}
+                  onChange={e => setLoginData({...loginData, identifiant: e.target.value})}
+                />
+              </div>
             </div>
+            
             <div>
-              <label className="block text-sm font-semibold mb-1" style={{ color: colors.textMain }}>PRÉNOM</label>
-              <input 
-                type="text" 
-                required 
-                placeholder="EX: Jean"
-                className="w-full px-4 py-3 rounded-lg border focus:outline-none transition-colors"
-                style={{ backgroundColor: isDark ? '#0f172a' : '#f8fafc', borderColor: colors.border, color: colors.textMain }}
-                value={loginData.prenom}
-                onChange={e => setLoginData({...loginData, prenom: e.target.value})}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold mb-1" style={{ color: colors.textMain }}>DATE DE NAISSANCE</label>
-              <input 
-                type="date" 
-                required 
-                className="w-full px-4 py-3 rounded-lg border focus:outline-none transition-colors"
-                style={{ backgroundColor: isDark ? '#0f172a' : '#f8fafc', borderColor: colors.border, color: colors.textMain }}
-                value={loginData.date_naissance}
-                onChange={e => setLoginData({...loginData, date_naissance: e.target.value})}
-              />
+              <label className="block text-xs font-bold mb-1.5 text-white/80 tracking-wider">
+                {t.pin}
+              </label>
+              <div className="relative">
+                <div className={`absolute inset-y-0 ${lang === 'ar' ? 'right-0 pr-3' : 'left-0 pl-3'} flex items-center pointer-events-none`}>
+                  <Calendar size={18} className="text-white/40" />
+                </div>
+                <input 
+                  type="date" 
+                  required 
+                  className={`w-full ${lang === 'ar' ? 'pr-10 pl-4' : 'pl-10 pr-4'} py-3 rounded-xl focus:outline-none transition-all text-white font-medium`}
+                  style={{ backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+                  value={loginData.date_naissance}
+                  onChange={e => setLoginData({...loginData, date_naissance: e.target.value})}
+                />
+              </div>
             </div>
 
             <button 
               type="submit" 
               disabled={loading}
-              className="w-full py-3 px-4 rounded-lg font-bold flex items-center justify-center gap-2 mt-6 transition-colors"
-              style={{ backgroundColor: colors.primary, color: '#ffffff', opacity: loading ? 0.7 : 1 }}
+              className="w-full py-3.5 px-4 rounded-xl font-bold flex items-center justify-center gap-2 mt-8 transition-all hover:scale-[1.02] active:scale-95"
+              style={{ backgroundColor: colors.primary, color: '#ffffff', opacity: loading ? 0.7 : 1, boxShadow: '0 10px 25px -5px rgba(56, 189, 248, 0.4)' }}
             >
               {loading ? "Recherche..." : (
-                <>Accéder à mon espace <ChevronRight size={18} /></>
+                <>{t.loginBtn} {lang === 'fr' && <ChevronRight size={18} />}</>
               )}
             </button>
           </form>
+
+          {/* Support Link */}
+          <div className="mt-8 text-center border-t border-white/10 pt-6">
+            <p className="text-xs text-white/50 mb-2">{t.support}</p>
+            <a 
+              href="https://wa.me/213555000000" // Remplacez par le numéro du club
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center justify-center gap-2 text-sm font-bold text-emerald-400 hover:text-emerald-300 transition-colors"
+            >
+              <Phone size={16} /> {t.contactAdmin}
+            </a>
+          </div>
         </div>
       </div>
     );
   }
 
+  // --- RENDU CONNECTÉ ---
   const status = getStatus();
+  const medStatus = getMedicalStatus();
   const latestCotis = getLatestCotisation();
 
   return (
-    <div className="min-h-screen pb-20 font-sans transition-colors duration-300" style={{ backgroundColor: colors.bgMain }}>
+    <div className="min-h-screen pb-20 font-sans transition-colors duration-300" style={{ backgroundColor: colors.bgMain }} dir={lang === 'ar' ? 'rtl' : 'ltr'}>
       
       {/* Header plat et propre */}
-      <header className="border-b" style={{ backgroundColor: colors.bgCard, borderColor: colors.border }}>
+      <header className="border-b shadow-sm sticky top-0 z-50 backdrop-blur-lg" style={{ backgroundColor: `${colors.bgCard}e6`, borderColor: colors.border }}>
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-3">
-            <span className="font-bold hidden sm:inline" style={{ color: colors.textMain }}>Sporting Club Bouira</span>
+            <div className="w-8 h-8 rounded-lg bg-sky-500 flex items-center justify-center shadow-md">
+              <Waves color="white" size={18} />
+            </div>
+            <span className="font-extrabold text-lg hidden sm:inline" style={{ color: colors.textMain }}>SCB Adhérent</span>
           </Link>
-          <button 
-            onClick={handleLogout} 
-            className="flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg border transition-colors"
-            style={{ borderColor: colors.border, color: colors.textMain, backgroundColor: isDark ? '#0f172a' : '#f8fafc' }}
-          >
-            <LogOut size={16} /> <span className="hidden sm:inline">Déconnexion</span>
-          </button>
+          
+          <div className="flex items-center gap-3">
+            <div className="flex gap-1 bg-[var(--bg-tertiary)] p-1 rounded-lg border border-[var(--border-color)]">
+               <button onClick={() => setLang('fr')} className={`px-2 py-1 rounded text-xs font-bold transition-all ${lang === 'fr' ? 'bg-sky-500 text-white' : 'text-muted'}`}>FR</button>
+               <button onClick={() => setLang('ar')} className={`px-2 py-1 rounded text-xs font-bold transition-all ${lang === 'ar' ? 'bg-sky-500 text-white' : 'text-muted'}`}>AR</button>
+            </div>
+            <button 
+              onClick={handleLogout} 
+              className="flex items-center gap-2 text-sm font-bold px-4 py-2 rounded-lg border hover:bg-rose-500 hover:text-white hover:border-rose-500 transition-colors"
+              style={{ borderColor: colors.border, color: colors.textMuted }}
+            >
+              <LogOut size={16} /> <span className="hidden sm:inline">{t.logout}</span>
+            </button>
+          </div>
         </div>
       </header>
 
-      <div className="max-w-6xl mx-auto px-4 pt-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2" style={{ color: colors.textMain }}>
-            Bonjour, {session.prenom} 👋
-          </h1>
-          <p className="text-base" style={{ color: colors.textMuted }}>
-            Voici les informations relatives à votre adhésion.
-          </p>
+      {/* TABS NAVIGATION */}
+      <div className="max-w-6xl mx-auto px-4 mt-8">
+        <div className="flex gap-2 mb-8 overflow-x-auto pb-2 scrollbar-none border-b border-[var(--border-color)]">
+          <button 
+            onClick={() => setActiveTab('dashboard')}
+            className={`px-4 py-2.5 rounded-t-xl font-bold text-sm flex items-center gap-2 transition-colors ${activeTab === 'dashboard' ? 'text-sky-500 border-b-2 border-sky-500 bg-sky-500/10' : 'text-muted hover:bg-black/5'}`}
+          >
+            <User size={18} /> {t.dashboard}
+          </button>
+          <button 
+            onClick={() => setActiveTab('performances')}
+            className={`px-4 py-2.5 rounded-t-xl font-bold text-sm flex items-center gap-2 transition-colors ${activeTab === 'performances' ? 'text-sky-500 border-b-2 border-sky-500 bg-sky-500/10' : 'text-muted hover:bg-black/5'}`}
+          >
+            <TrendingUp size={18} /> {t.performances}
+          </button>
+          <button 
+            onClick={() => setActiveTab('announcements')}
+            className={`px-4 py-2.5 rounded-t-xl font-bold text-sm flex items-center gap-2 transition-colors ${activeTab === 'announcements' ? 'text-sky-500 border-b-2 border-sky-500 bg-sky-500/10' : 'text-muted hover:bg-black/5'}`}
+          >
+            <Megaphone size={18} /> {t.announcements}
+          </button>
         </div>
+      </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
-          {/* COLONNE GAUCHE : IDENTIFICATION (FLAT DESIGN) */}
-          <div className="lg:col-span-1">
-            <div className="rounded-xl border p-6 flex flex-col items-center text-center" style={{ backgroundColor: colors.bgCard, borderColor: colors.border }}>
-              
-              <div className="w-24 h-24 rounded-full border-4 mb-4 overflow-hidden" style={{ borderColor: colors.border, backgroundColor: isDark ? '#0f172a' : '#f8fafc' }}>
-                {session.photo ? (
-                  <img src={session.photo} alt="Profil" className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center" style={{ color: colors.textMuted }}>
-                    <User size={32} />
-                  </div>
-                )}
-              </div>
-              
-              <h2 className="text-xl font-bold mb-1" style={{ color: colors.textMain }}>{session.prenom} {session.nom?.toUpperCase()}</h2>
-              <p className="text-sm font-medium uppercase tracking-wider mb-6" style={{ color: colors.primary }}>{session.groupe || 'Membre SCB'}</p>
-
-              <div className="w-full h-px mb-6" style={{ backgroundColor: colors.border }}></div>
-
-              <div className="p-4 rounded-xl mb-4" style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0' }}>
-                <QRCodeSVG 
-                  value={session.token_qr || `NO-TOKEN-${session.id}`} 
-                  size={160}
-                  level="Q"
-                  includeMargin={false}
-                  fgColor="#000000"
-                />
-              </div>
-              <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>Carte Numérique à scanner</p>
-              
-            </div>
-          </div>
-
-          {/* COLONNE DROITE : STATUT ET HISTORIQUE */}
-          <div className="lg:col-span-2 space-y-6">
+      <div className="max-w-6xl mx-auto px-4">
+        
+        {/* ===================== ONGLET DASHBOARD ===================== */}
+        {activeTab === 'dashboard' && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             
-            {/* Cartes de Statut */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="rounded-xl border p-6" style={{ backgroundColor: colors.bgCard, borderColor: colors.border }}>
-                <div className="flex items-center gap-3 mb-4">
-                  <Shield size={20} style={{ color: colors.textMuted }} />
-                  <h3 className="font-semibold" style={{ color: colors.textMuted }}>Statut Abonnement</h3>
+            {/* CARTE VIRTUELLE (QR) */}
+            <div className="lg:col-span-1">
+              <div className="rounded-2xl border p-6 flex flex-col items-center text-center shadow-sm relative overflow-hidden" style={{ backgroundColor: colors.bgCard, borderColor: colors.border }}>
+                <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-r from-sky-400 to-blue-500"></div>
+                
+                <div className="w-24 h-24 rounded-full border-4 relative z-10 mb-4 bg-white shadow-lg overflow-hidden flex items-center justify-center" style={{ borderColor: colors.bgCard }}>
+                  {session.photo ? (
+                    <img src={session.photo} alt="Profil" className="w-full h-full object-cover" />
+                  ) : (
+                    <User size={40} className="text-slate-300" />
+                  )}
                 </div>
-                <div className="text-xl font-bold mb-1" style={{ color: status.color }}>{status.label}</div>
-                <p className="text-sm" style={{ color: colors.textMain }}>
-                  Valable jusqu'au {latestCotis ? new Date(latestCotis.periode_couverte_fin).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}
-                </p>
-              </div>
+                
+                <h2 className="text-2xl font-extrabold mb-1" style={{ color: colors.textMain }}>{session.prenom} {session.nom?.toUpperCase()}</h2>
+                <p className="text-sm font-bold uppercase tracking-wider mb-6 text-sky-500">{session.groupe || 'Membre SCB'}</p>
 
-              <div className="rounded-xl border p-6" style={{ backgroundColor: colors.bgCard, borderColor: colors.border }}>
-                <div className="flex items-center gap-3 mb-4">
-                  <Activity size={20} style={{ color: colors.textMuted }} />
-                  <h3 className="font-semibold" style={{ color: colors.textMuted }}>Dernier passage</h3>
+                <div className="p-4 rounded-2xl mb-4 bg-white border-2 border-slate-100 shadow-inner inline-block">
+                  <QRCodeSVG 
+                    value={session.token_qr || `NO-TOKEN-${session.id}`} 
+                    size={180}
+                    level="H"
+                    includeMargin={false}
+                    fgColor="#0f172a"
+                  />
                 </div>
-                <div className="text-xl font-bold mb-1" style={{ color: colors.textMain }}>Aujourd'hui</div>
-                <p className="text-sm" style={{ color: colors.textMuted }}>Entrée validée à 17h30</p>
+                <p className="text-xs font-bold uppercase tracking-wider text-muted flex items-center gap-1.5 justify-center">
+                  <Globe size={14} /> {t.digitalCard}
+                </p>
+                <div className="mt-2 font-mono text-sm font-bold text-slate-400">{session.token_qr}</div>
               </div>
             </div>
 
-            {/* Historique des paiements */}
-            <div className="rounded-xl border overflow-hidden" style={{ backgroundColor: colors.bgCard, borderColor: colors.border }}>
-              <div className="p-6 border-b flex items-center gap-3" style={{ borderColor: colors.border }}>
-                <CreditCard size={20} style={{ color: colors.textMuted }} />
-                <h3 className="text-lg font-bold" style={{ color: colors.textMain }}>Historique de paiements</h3>
-              </div>
+            {/* STATUTS & HISTORIQUE */}
+            <div className="lg:col-span-2 space-y-6">
               
-              <div className="p-0">
-                {!session.cotisations || session.cotisations.length === 0 ? (
-                  <div className="p-8 text-center" style={{ color: colors.textMuted }}>
-                    Aucun paiement enregistré pour le moment.
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Cotisation Card */}
+                <div className="rounded-2xl border p-5 relative overflow-hidden" style={{ backgroundColor: colors.bgCard, borderColor: colors.border }}>
+                  <div className={`absolute top-0 right-0 w-2 h-full ${status.ok ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className={`p-2 rounded-xl ${status.ok ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>
+                      <Shield size={20} />
+                    </div>
+                    <h3 className="font-bold" style={{ color: colors.textMuted }}>{t.status}</h3>
                   </div>
-                ) : (
-                  <ul className="divide-y" style={{ divideColor: colors.border }}>
-                    {[...session.cotisations]
-                      .sort((a, b) => new Date(b.date_paiement) - new Date(a.date_paiement))
-                      .map((cotis) => (
-                      <li key={cotis.id} className="p-4 sm:px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 rounded-lg flex flex-col items-center justify-center border" style={{ backgroundColor: isDark ? '#0f172a' : '#f8fafc', borderColor: colors.border, color: colors.textMain }}>
-                            <span className="text-xs font-bold uppercase">{new Date(cotis.periode_couverte_fin).toLocaleString('fr-FR', { month: 'short' })}</span>
-                            <span className="text-[10px]" style={{ color: colors.textMuted }}>{new Date(cotis.periode_couverte_fin).getFullYear()}</span>
-                          </div>
-                          <div>
-                            <div className="font-bold text-base" style={{ color: colors.textMain }}>Abonnement Mensuel</div>
-                            <div className="text-sm flex items-center gap-2 mt-0.5" style={{ color: colors.textMuted }}>
-                              <span>Payé le {new Date(cotis.date_paiement).toLocaleDateString('fr-FR')}</span>
-                              <span className="w-1 h-1 rounded-full" style={{ backgroundColor: colors.textMuted }}></span>
-                              <span className="font-medium">{cotis.mode_paiement}</span>
+                  <div className={`text-2xl font-extrabold mb-1 ${status.ok ? 'text-emerald-500' : 'text-rose-500'}`}>{status.label}</div>
+                  <p className="text-sm font-medium" style={{ color: colors.textMain }}>
+                    {t.validUntil} {latestCotis ? new Date(latestCotis.periode_couverte_fin).toLocaleDateString(lang === 'ar' ? 'ar-DZ' : 'fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}
+                  </p>
+                </div>
+
+                {/* Medical Card */}
+                <div className="rounded-2xl border p-5 relative overflow-hidden" style={{ backgroundColor: colors.bgCard, borderColor: colors.border }}>
+                  <div className={`absolute top-0 right-0 w-2 h-full ${medStatus.ok ? 'bg-emerald-500' : 'bg-amber-500'}`}></div>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className={`p-2 rounded-xl ${medStatus.ok ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-500'}`}>
+                      <FileText size={20} />
+                    </div>
+                    <h3 className="font-bold" style={{ color: colors.textMuted }}>{t.medical}</h3>
+                  </div>
+                  <div className={`text-2xl font-extrabold mb-1 ${medStatus.ok ? 'text-emerald-500' : 'text-amber-500'}`}>{medStatus.label}</div>
+                  <p className="text-sm font-medium" style={{ color: colors.textMain }}>
+                    {session.certificat_medical ? 'Document validé' : 'Veuillez déposer votre certificat'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Historique des paiements */}
+              <div className="rounded-2xl border overflow-hidden" style={{ backgroundColor: colors.bgCard, borderColor: colors.border }}>
+                <div className="p-5 border-b flex items-center gap-3" style={{ borderColor: colors.border }}>
+                  <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-500"><CreditCard size={18} /></div>
+                  <h3 className="text-lg font-bold" style={{ color: colors.textMain }}>{t.history}</h3>
+                </div>
+                
+                <div className="p-0">
+                  {!session.cotisations || session.cotisations.length === 0 ? (
+                    <div className="p-8 text-center font-medium" style={{ color: colors.textMuted }}>
+                      {t.noHistory}
+                    </div>
+                  ) : (
+                    <ul className="divide-y" style={{ divideColor: colors.border }}>
+                      {[...session.cotisations].sort((a, b) => new Date(b.date_paiement) - new Date(a.date_paiement)).map((cotis) => (
+                        <li key={cotis.id} className="p-4 sm:px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-500/5 transition-colors">
+                          <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-xl flex flex-col items-center justify-center border bg-[var(--bg-tertiary)] border-[var(--border-color)]">
+                              <span className="text-xs font-extrabold uppercase">{new Date(cotis.periode_couverte_fin).toLocaleString(lang==='ar'?'ar-DZ':'fr-FR', { month: 'short' })}</span>
+                              <span className="text-[10px] text-muted">{new Date(cotis.periode_couverte_fin).getFullYear()}</span>
+                            </div>
+                            <div>
+                              <div className="font-bold text-base" style={{ color: colors.textMain }}>Abonnement Mensuel</div>
+                              <div className="text-sm flex items-center gap-2 mt-0.5 text-muted font-medium">
+                                <span>{t.paidOn} {new Date(cotis.date_paiement).toLocaleDateString(lang==='ar'?'ar-DZ':'fr-FR')}</span>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                        <div className="sm:text-right flex sm:flex-col justify-between sm:justify-start items-center sm:items-end">
-                          <div className="font-extrabold text-lg" style={{ color: colors.textMain }}>
-                            {Number(cotis.montant_paye).toLocaleString('fr-DZ')} DA
+                          <div className={`sm:text-${lang === 'ar' ? 'left' : 'right'} flex sm:flex-col justify-between sm:justify-start items-center sm:items-end`}>
+                            <div className="font-extrabold text-lg text-[var(--text-primary)]">
+                              {Number(cotis.montant_paye).toLocaleString('fr-DZ')} DA
+                            </div>
+                            <div className="text-xs font-bold flex items-center gap-1 mt-0.5 text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                              <CheckCircle size={12} /> Réglé
+                            </div>
                           </div>
-                          <div className="text-xs font-medium flex items-center gap-1 mt-0.5" style={{ color: '#10b981' }}>
-                            <CheckCircle size={12} /> Réglé
-                          </div>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
             </div>
-
           </div>
-        </div>
+        )}
+
+        {/* ===================== ONGLET PERFORMANCES ===================== */}
+        {activeTab === 'performances' && (
+          <div className="space-y-6">
+            <div className="rounded-2xl border p-6" style={{ backgroundColor: colors.bgCard, borderColor: colors.border }}>
+              <h3 className="text-xl font-extrabold mb-4 text-[var(--text-primary)] flex items-center gap-2">
+                <Timer className="text-sky-500" /> {t.perfTitle}
+              </h3>
+              
+              {chartData.length > 0 ? (
+                <div>
+                  <p className="text-sm text-muted font-medium mb-6">
+                    {t.event}: <strong className="text-sky-500">{chartData[0].label}</strong>
+                  </p>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart data={chartData} margin={{ top: 20, right: 20, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)"} vertical={false} />
+                      <XAxis dataKey="date" stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} />
+                      <YAxis stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} domain={['dataMin - 1', 'dataMax + 1']} />
+                      <Tooltip contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.9)', border: 'none', borderRadius: '12px', color: '#fff' }} />
+                      <Line type="monotone" dataKey="temps" stroke="#38bdf8" strokeWidth={4} dot={{ r: 6, fill: '#38bdf8' }} activeDot={{ r: 8 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="text-center py-12 border-2 border-dashed rounded-xl border-[var(--border-color)] text-muted font-bold">
+                  {t.noPerf}
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+               {/* Afficher les Meilleurs temps rapides */}
+               {['50_NL', '100_NL', '50_DOS', '50_PAP'].map(eventId => {
+                 const ev = SWIMMING_EVENTS.find(e => e.id === eventId);
+                 const perfs = performances.filter(p => p.event_id === eventId).sort((a,b) => a.seconds - b.seconds);
+                 if (perfs.length === 0) return null;
+                 return (
+                   <div key={eventId} className="p-4 rounded-xl border bg-[var(--bg-tertiary)] border-[var(--border-color)]">
+                     <span className="text-xs font-bold text-muted uppercase">{ev.shortLabel}</span>
+                     <div className="text-lg font-extrabold text-emerald-500 mt-1">{perfs[0].chrono_str}</div>
+                     <span className="text-[10px] bg-emerald-500/20 text-emerald-500 px-1.5 rounded-sm uppercase font-bold">PB</span>
+                   </div>
+                 );
+               })}
+            </div>
+          </div>
+        )}
+
+        {/* ===================== ONGLET ANNONCES ===================== */}
+        {activeTab === 'announcements' && (
+          <div className="space-y-4">
+            <div className="rounded-2xl border p-6 border-sky-500/30 bg-sky-500/5 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-sky-500/10 rounded-full blur-3xl -mr-10 -mt-10"></div>
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-sky-500 text-white rounded-2xl shadow-lg shadow-sky-500/30">
+                  <Megaphone size={24} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-extrabold text-[var(--text-primary)]">Bienvenue sur votre nouvel espace !</h3>
+                  <p className="text-sm font-medium text-muted mt-1">Le portail vient d'être mis à jour. Vous pouvez désormais présenter votre carte virtuelle (QR) directement depuis votre smartphone pour accéder aux bassins.</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="rounded-2xl border p-6 border-amber-500/30 bg-amber-500/5 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-3xl -mr-10 -mt-10"></div>
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-amber-500 text-white rounded-2xl shadow-lg shadow-amber-500/30">
+                  <Award size={24} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-extrabold text-[var(--text-primary)]">Compétition de Wilaya</h3>
+                  <p className="text-sm font-medium text-muted mt-1">Les convocations pour le prochain meeting seront bientôt affichées ici. Gardez un œil sur vos performances !</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );
