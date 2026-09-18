@@ -46,7 +46,7 @@ export default function LandingPage() {
         zIndex: 50
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 'bold', fontSize: '1.5rem', background: 'linear-gradient(135deg, #60a5fa, #a78bfa)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-          <Waves size={28} color="#60a5fa" />
+          <img src="/logo.png" alt="SC Bouira Logo" style={{ height: '40px', width: 'auto', borderRadius: '8px' }} />
           SC Bouira
         </div>
         <nav style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
@@ -191,7 +191,7 @@ export default function LandingPage() {
       {/* FOOTER */}
       <footer style={{ borderTop: '1px solid rgba(255,255,255,0.05)', padding: '3rem 5%', background: '#0b1120', color: '#64748b', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', fontWeight: 'bold' }}>
-          <Waves size={20} color="#60a5fa" /> SC Bouira
+          <img src="/logo.png" alt="SC Bouira Logo" style={{ height: '30px', width: 'auto', borderRadius: '6px' }} /> SC Bouira
         </div>
         <p>© {new Date().getFullYear()} Sporting Club Bouira. Tous droits réservés.</p>
       </footer>
