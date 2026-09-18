@@ -118,6 +118,9 @@ export function useInscriptions() {
       delete toInsert.contact_urgence;
       delete toInsert.observations_medicales;
       delete toInsert.groupe_id;
+      delete toInsert.certificat_medical;
+      delete toInsert.autorisation_parentale;
+      delete toInsert.extrait_naissance;
 
       let retry = await supabase.from('athletes').insert([toInsert]).select().maybeSingle();
       if (retry.error && retry.error.message?.includes('column')) {
@@ -150,6 +153,9 @@ export function useInscriptions() {
         groupe: inscription.groupes?.nom || inscription.groupe_nom || null,
         certificat_medical_valide: true,
         photo: inscription.photo || null,
+        certificat_medical: inscription.certificat_medical || null,
+        autorisation_parentale: inscription.autorisation_parentale || null,
+        extrait_naissance: inscription.extrait_naissance || null,
         token_qr: token_qr,
         est_actif: true
       };
@@ -253,6 +259,9 @@ export function useInscriptions() {
           groupe: item.groupes?.nom || item.groupe_nom || null,
           certificat_medical_valide: true,
           photo: item.photo || null,
+          certificat_medical: item.certificat_medical || null,
+          autorisation_parentale: item.autorisation_parentale || null,
+          extrait_naissance: item.extrait_naissance || null,
           token_qr: token_qr,
           est_actif: true
         };

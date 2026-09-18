@@ -4,9 +4,10 @@ import { supabase } from '../supabaseClient';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
 import { z } from 'zod';
-import { ShieldAlert, PhoneCall, HeartPulse, FileText } from 'lucide-react';
+import { ShieldAlert, PhoneCall, HeartPulse, FileText, Eye, Upload, Paperclip } from 'lucide-react';
 import { Card, Button } from '../components/ui';
 import { useGroupes } from '../hooks/useGroupes';
+import { compressImageFile } from '../utils/imageCompressor';
 
 const athleteSchema = z.object({
   nom: z.string().min(2, 'Le nom doit faire au moins 2 caractères'),
@@ -34,7 +35,10 @@ export default function AthleteForm() {
     groupe_id: '',
     sexe: '',
     certificat_medical_valide: false,
-    photo: null
+    photo: null,
+    certificat_medical: null,
+    autorisation_parentale: null,
+    extrait_naissance: null
   });
   const [photoPreview, setPhotoPreview] = useState(null);
 
@@ -62,7 +66,10 @@ export default function AthleteForm() {
             groupe_id: data.groupe_id || '',
             sexe: data.sexe || '',
             certificat_medical_valide: data.certificat_medical_valide || false,
-            photo: data.photo || null
+            photo: data.photo || null,
+            certificat_medical: data.certificat_medical || null,
+            autorisation_parentale: data.autorisation_parentale || null,
+            extrait_naissance: data.extrait_naissance || null
           });
           if (data.photo) setPhotoPreview(data.photo);
         }
@@ -113,6 +120,32 @@ export default function AthleteForm() {
     reader.readAsDataURL(file);
   };
 
+  const handleDocumentChange = async (e, fieldName) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const base64 = await compressImageFile(file, 1200, 1600, 0.75);
+      if (base64) {
+        setFormData(prev => ({ ...prev, [fieldName]: base64 }));
+        toast.success('Document mis à jour en mémoire. N\\'oubliez pas de sauvegarder.');
+      }
+    } catch (err) {
+      toast.error('Erreur lors du chargement du fichier.');
+    }
+  };
+
+  const openDocument = (base64Data) => {
+    if (!base64Data) return;
+    const newWindow = window.open();
+    if (newWindow) {
+      if (base64Data.startsWith('data:application/pdf')) {
+        newWindow.document.write(`<iframe src="${base64Data}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+      } else {
+        newWindow.document.write(`<img src="${base64Data}" style="max-width:100%;"/>`);
+      }
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -139,7 +172,10 @@ export default function AthleteForm() {
         groupe_id: formData.groupe_id || null,
         sexe: formData.sexe || null,
         certificat_medical_valide: formData.certificat_medical_valide,
-        photo: formData.photo || null
+        photo: formData.photo || null,
+        certificat_medical: formData.certificat_medical || null,
+        autorisation_parentale: formData.autorisation_parentale || null,
+        extrait_naissance: formData.extrait_naissance || null
       };
 
       if (id) {
@@ -380,6 +416,79 @@ export default function AthleteForm() {
               rows={3}
               style={{ width: '100%', resize: 'vertical' }}
             />
+          </div>
+        </div>
+
+        {/* DOCUMENTS OFFICIELS */}
+        <div className="pt-6 mt-6" style={{ borderTop: '1px solid var(--border-color)' }}>
+          <h3 className="text-base font-semibold mb-4 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+            <Paperclip size={20} style={{ color: '#8b5cf6' }} /> Documents Officiels & Pièces Jointes
+          </h3>
+          <p className="text-sm text-muted mb-6">Consultez ou remplacez les documents numériques associés à ce dossier.</p>
+
+          <div className="grid md:grid-cols-3 gap-4">
+            {/* Certificat Médical */}
+            <Card className="p-4 flex flex-col gap-3" style={{ backgroundColor: 'rgba(255,255,255,0.02)' }}>
+              <div className="font-semibold text-sm flex items-center justify-between">
+                Certificat Médical
+                {formData.certificat_medical && <span className="text-xs text-success bg-success/10 px-2 py-1 rounded-md">Fourni</span>}
+              </div>
+              <div className="flex gap-2 mt-auto">
+                {formData.certificat_medical && (
+                  <Button type="button" variant="secondary" onClick={() => openDocument(formData.certificat_medical)} style={{ flex: 1, padding: '0.35rem', fontSize: '0.75rem', display: 'flex', justifyContent: 'center' }}>
+                    <Eye size={14} className="mr-1" /> Voir
+                  </Button>
+                )}
+                <div style={{ position: 'relative', flex: 1 }}>
+                  <Button type="button" variant="secondary" style={{ width: '100%', padding: '0.35rem', fontSize: '0.75rem', display: 'flex', justifyContent: 'center' }}>
+                    <Upload size={14} className="mr-1" /> {formData.certificat_medical ? 'Remplacer' : 'Ajouter'}
+                  </Button>
+                  <input type="file" accept=".pdf,image/*" onChange={(e) => handleDocumentChange(e, 'certificat_medical')} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} />
+                </div>
+              </div>
+            </Card>
+
+            {/* Extrait de Naissance */}
+            <Card className="p-4 flex flex-col gap-3" style={{ backgroundColor: 'rgba(255,255,255,0.02)' }}>
+              <div className="font-semibold text-sm flex items-center justify-between">
+                Extrait de Naissance
+                {formData.extrait_naissance && <span className="text-xs text-success bg-success/10 px-2 py-1 rounded-md">Fourni</span>}
+              </div>
+              <div className="flex gap-2 mt-auto">
+                {formData.extrait_naissance && (
+                  <Button type="button" variant="secondary" onClick={() => openDocument(formData.extrait_naissance)} style={{ flex: 1, padding: '0.35rem', fontSize: '0.75rem', display: 'flex', justifyContent: 'center' }}>
+                    <Eye size={14} className="mr-1" /> Voir
+                  </Button>
+                )}
+                <div style={{ position: 'relative', flex: 1 }}>
+                  <Button type="button" variant="secondary" style={{ width: '100%', padding: '0.35rem', fontSize: '0.75rem', display: 'flex', justifyContent: 'center' }}>
+                    <Upload size={14} className="mr-1" /> {formData.extrait_naissance ? 'Remplacer' : 'Ajouter'}
+                  </Button>
+                  <input type="file" accept=".pdf,image/*" onChange={(e) => handleDocumentChange(e, 'extrait_naissance')} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} />
+                </div>
+              </div>
+            </Card>
+
+            {/* Autorisation Parentale */}
+            <Card className="p-4 flex flex-col gap-3" style={{ backgroundColor: 'rgba(255,255,255,0.02)' }}>
+              <div className="font-semibold text-sm flex items-center justify-between">
+                Autorisation Parentale
+                {formData.autorisation_parentale && <span className="text-xs text-success bg-success/10 px-2 py-1 rounded-md">Fournie</span>}
+              </div>
+              <div className="flex gap-2 mt-auto">
+                {formData.autorisation_parentale && (
+                  <Button type="button" variant="secondary" onClick={() => openDocument(formData.autorisation_parentale)} style={{ flex: 1, padding: '0.35rem', fontSize: '0.75rem', display: 'flex', justifyContent: 'center' }}>
+                    <Eye size={14} className="mr-1" /> Voir
+                  </Button>
+                )}
+                <div style={{ position: 'relative', flex: 1 }}>
+                  <Button type="button" variant="secondary" style={{ width: '100%', padding: '0.35rem', fontSize: '0.75rem', display: 'flex', justifyContent: 'center' }}>
+                    <Upload size={14} className="mr-1" /> {formData.autorisation_parentale ? 'Remplacer' : 'Ajouter'}
+                  </Button>
+                  <input type="file" accept=".pdf,image/*" onChange={(e) => handleDocumentChange(e, 'autorisation_parentale')} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} />
+                </div>
+              </div>
+            </Card>
           </div>
         </div>
 
