@@ -23,6 +23,7 @@ const PublicRegistration = lazy(() => import('./pages/PublicRegistration'));
 const PendingInscriptions = lazy(() => import('./pages/PendingInscriptions'));
 const LandingPage = lazy(() => import('./pages/LandingPage'));
 const MemberPortal = lazy(() => import('./pages/MemberPortal'));
+const Schedule = lazy(() => import('./pages/Schedule'));
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 
@@ -157,6 +158,8 @@ function AppRoutes() {
             <Route path="/finances" element={<ProtectedRoute allowedRoles={['admin', 'secretaire']}><AppLayout><FinancialDashboard /></AppLayout></ProtectedRoute>} />
             
             <Route path="/groupes" element={<ProtectedRoute allowedRoles={['admin', 'secretaire']}><AppLayout><GroupsManagement /></AppLayout></ProtectedRoute>} />
+            
+            <Route path="/planning" element={<ProtectedRoute allowedRoles={['admin', 'secretaire', 'entraineur']}><AppLayout><Schedule /></AppLayout></ProtectedRoute>} />
             
             <Route path="/users" element={<ProtectedRoute allowedRoles={['admin']}><AppLayout><UsersManagement /></AppLayout></ProtectedRoute>} />
             

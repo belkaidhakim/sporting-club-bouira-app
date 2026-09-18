@@ -119,8 +119,14 @@ export default function Sidebar({ isOpen, setIsOpen }) {
         )}
         {['admin', 'secretaire'].includes(role) && (
           <NavLink to="/groupes" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"} onClick={() => setIsOpen(false)}>
+            <Users size={18} />
+            <span>Groupes (Niveaux)</span>
+          </NavLink>
+        )}
+        {['admin', 'secretaire', 'entraineur'].includes(role) && (
+          <NavLink to="/planning" className={({ isActive }) => isActive ? "nav-item active" : "nav-item"} onClick={() => setIsOpen(false)}>
             <CalendarDays size={18} />
-            <span>Groupes & Plannings</span>
+            <span>Planning & Bassins</span>
           </NavLink>
         )}
         {['admin'].includes(role) && (
