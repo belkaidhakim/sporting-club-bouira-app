@@ -122,7 +122,6 @@ export default function MemberPortal() {
       <div className="min-h-screen flex items-center justify-center p-4 font-sans transition-colors duration-300" style={{ backgroundColor: colors.bgMain }}>
         <div className="absolute top-6 left-6 z-20">
           <Link to="/" className="flex items-center gap-2 font-bold transition-colors" style={{ color: colors.textMuted }}>
-            <img src="/logo.png" alt="Logo" className="h-8 rounded" />
             <span className="hidden sm:inline" style={{ color: colors.textMain }}>Retour au site</span>
           </Link>
         </div>
@@ -196,7 +195,6 @@ export default function MemberPortal() {
       <header className="border-b" style={{ backgroundColor: colors.bgCard, borderColor: colors.border }}>
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-3">
-            <img src="/logo.png" alt="SC Bouira" className="h-8 rounded" />
             <span className="font-bold hidden sm:inline" style={{ color: colors.textMain }}>Sporting Club Bouira</span>
           </Link>
           <button 
