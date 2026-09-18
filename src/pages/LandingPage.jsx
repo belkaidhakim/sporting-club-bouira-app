@@ -71,6 +71,9 @@ export default function LandingPage() {
           <button onClick={toggleTheme} style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.textMuted, display: 'flex', alignItems: 'center' }}>
             {isDark ? <Sun size={20} /> : <Moon size={20} />}
           </button>
+          <Link to="/espace-membre" style={{ color: colors.textMain, textDecoration: 'none', fontSize: '0.95rem', fontWeight: 600, transition: 'color 0.2s' }} onMouseOver={e => e.target.style.color = '#3b82f6'} onMouseOut={e => e.target.style.color = colors.textMain}>
+            Espace Adhérent
+          </Link>
           <Link to="/login" style={{ color: colors.textMuted, textDecoration: 'none', fontSize: '0.9rem', transition: 'color 0.2s', fontWeight: 500 }} onMouseOver={e => e.target.style.color = '#3b82f6'} onMouseOut={e => e.target.style.color = colors.textMuted}>
             Espace Admin
           </Link>

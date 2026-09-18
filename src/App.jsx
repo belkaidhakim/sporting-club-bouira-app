@@ -22,6 +22,7 @@ const GroupsManagement = lazy(() => import('./pages/GroupsManagement'));
 const PublicRegistration = lazy(() => import('./pages/PublicRegistration'));
 const PendingInscriptions = lazy(() => import('./pages/PendingInscriptions'));
 const LandingPage = lazy(() => import('./pages/LandingPage'));
+const MemberPortal = lazy(() => import('./pages/MemberPortal'));
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 
@@ -135,6 +136,7 @@ function AppRoutes() {
             
             {/* Public routes without sidebar */}
             <Route path="/scanner" element={<Scanner />} />
+            <Route path="/espace-membre" element={<MemberPortal />} />
             <Route path="/inscription" element={<PublicRegistration />} />
             <Route path="/inscriptions" element={<PublicRegistration />} />
             <Route path="/preinscription" element={<PublicRegistration />} />
