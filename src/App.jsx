@@ -134,11 +134,17 @@ function AppRoutes() {
             {/* Public routes without sidebar */}
             <Route path="/scanner" element={<Scanner />} />
             <Route path="/inscription" element={<PublicRegistration />} />
+            <Route path="/inscriptions" element={<PublicRegistration />} />
+            <Route path="/preinscription" element={<PublicRegistration />} />
+            <Route path="/pre-inscription" element={<PublicRegistration />} />
+            <Route path="/adhesion" element={<PublicRegistration />} />
             
             {/* Admin routes with layout */}
             <Route path="/dashboard" element={<ProtectedRoute><AppLayout><Dashboard /></AppLayout></ProtectedRoute>} />
             
             <Route path="/inscriptions-en-attente" element={<ProtectedRoute allowedRoles={['admin', 'secretaire']}><AppLayout><PendingInscriptions /></AppLayout></ProtectedRoute>} />
+            <Route path="/admin/inscriptions" element={<ProtectedRoute allowedRoles={['admin', 'secretaire']}><AppLayout><PendingInscriptions /></AppLayout></ProtectedRoute>} />
+            <Route path="/inscriptions-admin" element={<ProtectedRoute allowedRoles={['admin', 'secretaire']}><AppLayout><PendingInscriptions /></AppLayout></ProtectedRoute>} />
 
             <Route path="/athletes" element={<ProtectedRoute allowedRoles={['admin', 'secretaire', 'entraineur']}><AppLayout><AthletesList /></AppLayout></ProtectedRoute>} />
             <Route path="/athletes/new" element={<ProtectedRoute allowedRoles={['admin', 'secretaire']}><AppLayout><AthleteForm /></AppLayout></ProtectedRoute>} />

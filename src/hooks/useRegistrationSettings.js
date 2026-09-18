@@ -3,13 +3,15 @@ import { supabase } from '../supabaseClient';
 import toast from 'react-hot-toast';
 
 export function useRegistrationSettings() {
-  const [isOpen, setIsOpen] = useState(true);
-  const [loading, setLoading] = useState(true);
+  const [isOpen, setIsOpen] = useState(() => {
+    const localVal = localStorage.getItem('scb_inscriptions_ouvertes');
+    return localVal === null ? true : localVal === 'true';
+  });
+  const [loading, setLoading] = useState(false);
 
   // Charger le statut
   const fetchSettings = useCallback(async () => {
     try {
-      setLoading(true);
       // 1. Lire depuis le stockage local (valeur instantanée)
       const localVal = localStorage.getItem('scb_inscriptions_ouvertes');
       if (localVal !== null) {

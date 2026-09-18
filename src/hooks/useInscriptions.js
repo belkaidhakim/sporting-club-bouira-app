@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import toast from 'react-hot-toast';
 
@@ -22,7 +22,11 @@ export function useInscriptions() {
       setLoading(true);
       const localItems = getLocalBackups();
       
-      const { data, error } = await supabase
+      let remoteData = null;
+      let fetchError = null;
+
+      // 1. Tenter avec la relation groupes
+      const resWithGroup = await supabase
         .from('inscriptions')
         .select(`
           *,
@@ -30,21 +34,36 @@ export function useInscriptions() {
         `)
         .order('date_demande', { ascending: false });
 
-      if (error) {
-        if (error.code === '42P01' || error.message?.includes('relation "public.inscriptions" does not exist') || error.message?.includes('not found')) {
+      if (resWithGroup.error) {
+        // Fallback sans jointure si la clé étrangère n'est pas configurée dans Supabase
+        const resSimple = await supabase
+          .from('inscriptions')
+          .select('*')
+          .order('date_demande', { ascending: false });
+        
+        remoteData = resSimple.data;
+        fetchError = resSimple.error;
+      } else {
+        remoteData = resWithGroup.data;
+      }
+
+      if (fetchError) {
+        if (fetchError.code === '42P01' || fetchError.message?.includes('relation "public.inscriptions" does not exist') || fetchError.message?.includes('not found')) {
           console.warn('Table inscriptions non encore créée dans Supabase.');
           setIsTableMissing(true);
-          setInscriptions(localItems);
-          return;
+        } else {
+          console.warn('Erreur Supabase fetchInscriptions:', fetchError);
         }
-        throw error;
+        setInscriptions(localItems);
+        setError(fetchError.message);
+        return;
       }
       
       setIsTableMissing(false);
-      // Merge remote and any un-synced local items (deduplicate by numero_dossier)
-      const remoteMap = new Set((data || []).map(d => d.numero_dossier));
+      // Fusionner les inscriptions Supabase et les inscriptions locales de secours
+      const remoteMap = new Set((remoteData || []).map(d => d.numero_dossier));
       const unSyncedLocals = localItems.filter(l => !remoteMap.has(l.numero_dossier));
-      setInscriptions([...unSyncedLocals, ...(data || [])]);
+      setInscriptions([...unSyncedLocals, ...(remoteData || [])]);
       setError(null);
     } catch (err) {
       console.error('Erreur fetchInscriptions:', err);
@@ -54,6 +73,37 @@ export function useInscriptions() {
       setLoading(false);
     }
   }, []);
+
+  // Écouter les mises à jour locales et temps réel
+  useEffect(() => {
+    const handleLocalUpdate = () => {
+      fetchInscriptions();
+    };
+
+    window.addEventListener('storage', handleLocalUpdate);
+    window.addEventListener('scb_inscriptions_updated', handleLocalUpdate);
+
+    // Abonnement temps réel Supabase
+    let channel = null;
+    try {
+      channel = supabase
+        .channel('realtime:inscriptions')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'inscriptions' }, () => {
+          fetchInscriptions();
+        })
+        .subscribe();
+    } catch (e) {
+      console.warn('Realtime subscription note:', e);
+    }
+
+    return () => {
+      window.removeEventListener('storage', handleLocalUpdate);
+      window.removeEventListener('scb_inscriptions_updated', handleLocalUpdate);
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
+  }, [fetchInscriptions]);
 
   // Compteur de demandes en attente
   const pendingCount = inscriptions.filter(i => i.statut === 'EN_ATTENTE').length;

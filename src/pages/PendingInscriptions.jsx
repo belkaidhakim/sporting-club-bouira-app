@@ -26,7 +26,8 @@ import {
   Square,
   Sparkles,
   Lock,
-  Unlock
+  Unlock,
+  RefreshCw
 } from 'lucide-react';
 import { Card, Button, Skeleton } from '../components/ui';
 import { useInscriptions } from '../hooks/useInscriptions';
@@ -465,17 +466,27 @@ CREATE POLICY "Admins can delete inscriptions" ON public.inscriptions FOR DELETE
             </button>
           </div>
 
-          {/* Recherche */}
-          <div style={{ position: 'relative', width: '100%', maxWidth: '300px' }}>
-            <Search size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-            <input 
-              type="text" 
-              placeholder="Rechercher par nom, dossier..." 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="form-input"
-              style={{ paddingLeft: '34px', fontSize: '0.8rem', paddingBlock: '0.4rem' }}
-            />
+          {/* Recherche & Actualisation */}
+          <div className="flex items-center gap-2 w-full md:w-auto">
+            <div style={{ position: 'relative', width: '100%', maxWidth: '300px' }}>
+              <Search size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              <input 
+                type="text" 
+                placeholder="Rechercher par nom, dossier..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="form-input"
+                style={{ paddingLeft: '34px', fontSize: '0.8rem', paddingBlock: '0.4rem' }}
+              />
+            </div>
+            <button
+              onClick={() => fetchInscriptions()}
+              className="btn btn-secondary"
+              style={{ padding: '0.4rem 0.65rem', borderRadius: '8px' }}
+              title="Actualiser les inscriptions"
+            >
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            </button>
           </div>
         </div>
 
@@ -487,10 +498,30 @@ CREATE POLICY "Admins can delete inscriptions" ON public.inscriptions FOR DELETE
             <Skeleton height="45px" />
           </div>
         ) : filteredInscriptions.length === 0 ? (
-          <div className="p-12 text-center text-muted">
-            <FileText size={36} style={{ margin: '0 auto 10px', opacity: 0.35 }} />
-            <p style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600 }}>Aucun dossier d'inscription dans cette vue.</p>
-            <span style={{ fontSize: '0.8rem' }}>Les nouvelles pré-inscriptions publiques apparaîtront automatiquement ici.</span>
+          <div className="p-10 text-center text-muted">
+            <FileText size={40} style={{ margin: '0 auto 12px', opacity: 0.35 }} />
+            <p style={{ margin: '0 0 6px', fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              Aucun dossier d'inscription dans cette vue
+            </p>
+            <p style={{ fontSize: '0.82rem', maxWidth: '460px', margin: '0 auto 1.25rem', color: 'var(--text-muted)' }}>
+              Les pré-inscriptions soumises via le portail public apparaîtront automatiquement ici en temps réel.
+            </p>
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button 
+                variant="secondary" 
+                onClick={() => fetchInscriptions()}
+                style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              >
+                <RefreshCw size={14} /> Actualiser la liste
+              </Button>
+              <Button 
+                variant="primary" 
+                onClick={() => window.open('/inscription', '_blank')}
+                style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              >
+                <ExternalLink size={14} /> Ouvrir le portail d'inscription
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="table-responsive">
