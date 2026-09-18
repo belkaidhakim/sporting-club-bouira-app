@@ -14,6 +14,7 @@ export default function Scanner() {
   const [athleteData, setAthleteData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [entryCount, setEntryCount] = useState(0);
+  const [scanMode, setScanMode] = useState('pointage'); // 'pointage' ou 'verification'
 
   // État de connexion & file hors-ligne
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -174,31 +175,33 @@ export default function Scanner() {
         let alreadyScanned = false;
 
         if (statut === 'ACTIVE') {
-          if (navigator.onLine) {
-            const { error: insertError } = await supabase
-              .from('presences')
-              .insert([{ athlete_id: athlete.id }]);
-            
-            if (insertError) {
-              if (insertError.code === '23505') {
-                alreadyScanned = true;
+          if (scanMode === 'pointage') {
+            if (navigator.onLine) {
+              const { error: insertError } = await supabase
+                .from('presences')
+                .insert([{ athlete_id: athlete.id }]);
+              
+              if (insertError) {
+                if (insertError.code === '23505') {
+                  alreadyScanned = true;
+                } else {
+                  toast.error("Erreur d'enregistrement: " + insertError.message);
+                }
               } else {
-                toast.error("Erreur d'enregistrement: " + insertError.message);
+                setEntryCount(prev => prev + 1);
               }
             } else {
+              // Mode hors-ligne : Sauvegarder dans la file d'attente
+              const newQueueItem = {
+                athlete_id: athlete.id,
+                nom: athlete.nom,
+                prenom: athlete.prenom,
+                date: new Date().toISOString()
+              };
+              const updatedQueue = [...offlineQueue, newQueueItem];
+              saveOfflineQueue(updatedQueue);
               setEntryCount(prev => prev + 1);
             }
-          } else {
-            // Mode hors-ligne : Sauvegarder dans la file d'attente
-            const newQueueItem = {
-              athlete_id: athlete.id,
-              nom: athlete.nom,
-              prenom: athlete.prenom,
-              date: new Date().toISOString()
-            };
-            const updatedQueue = [...offlineQueue, newQueueItem];
-            saveOfflineQueue(updatedQueue);
-            setEntryCount(prev => prev + 1);
           }
 
           if (alreadyScanned) {
@@ -420,6 +423,29 @@ export default function Scanner() {
               <span>{offlineQueue.length} en attente</span>
             </button>
           )}
+
+          {/* Mode Toggle (Pointage / Vérification) */}
+          <button
+            onClick={() => setScanMode(prev => prev === 'pointage' ? 'verification' : 'pointage')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '0.35rem 0.85rem',
+              borderRadius: '9999px',
+              fontSize: '0.75rem',
+              fontWeight: 800,
+              backgroundColor: scanMode === 'pointage' ? 'rgba(139, 92, 246, 0.2)' : 'rgba(100, 116, 139, 0.2)',
+              color: scanMode === 'pointage' ? '#a78bfa' : '#94a3b8',
+              border: `1px solid ${scanMode === 'pointage' ? 'rgba(139, 92, 246, 0.4)' : 'rgba(100, 116, 139, 0.4)'}`,
+              cursor: 'pointer',
+              transition: 'all 0.2s'
+            }}
+            title="Changer le mode de scan"
+          >
+            <Sparkles size={14} />
+            <span>Mode {scanMode === 'pointage' ? 'Pointage' : 'Vérification'}</span>
+          </button>
 
           {/* Bouton Son On/Off */}
           <button

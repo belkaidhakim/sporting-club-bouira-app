@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
 import jsPDF from 'jspdf';
 import toast from 'react-hot-toast';
-import { TrendingUp, Search, Download, AlertTriangle, FileText, Edit, TrendingDown, DollarSign, Trash2, Eye, Printer, X, Settings, Sliders, Coins, Sparkles, CheckCircle2, Users } from 'lucide-react';
+import { TrendingUp, Search, Download, AlertTriangle, FileText, Edit, TrendingDown, DollarSign, Trash2, Eye, Printer, X, Settings, Sliders, Coins, Sparkles, CheckCircle2, Users, MessageCircle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { z } from 'zod';
 import { useCotisations } from '../hooks/useCotisations';
@@ -223,7 +223,7 @@ export default function FinancialDashboard() {
     };
   }, [cotisations, depenses, fraisInscription, totalAdhesion]);
 
-  const expiredCount = useMemo(() => {
+  const expiredList = useMemo(() => {
     const now = new Date();
     const lastCotisMap = new Map();
     cotisations.forEach(c => {
@@ -236,14 +236,22 @@ export default function FinancialDashboard() {
       }
     });
 
-    let count = 0;
+    const list = [];
     lastCotisMap.forEach((c) => {
       if (new Date(c.periode_couverte_fin) < now) {
-        count++;
+        // Find athlete info
+        const athlete = athletes.find(a => a.id === c.athlete_id);
+        if (athlete) {
+          list.push({ ...c, athletes: athlete });
+        } else {
+          list.push(c);
+        }
       }
     });
-    return count;
-  }, [cotisations]);
+    return list;
+  }, [cotisations, athletes]);
+
+  const expiredCount = expiredList.length;
 
   const currentMonthName = useMemo(() => {
     const months = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
@@ -282,7 +290,7 @@ export default function FinancialDashboard() {
       setLoading(true);
       const { data: athletesData, error: athError } = await supabase
         .from('athletes')
-        .select('id, nom, prenom')
+        .select('id, nom, prenom, telephone, telephone_tuteur')
         .eq('est_actif', true)
         .order('nom', { ascending: true });
         
@@ -1250,6 +1258,34 @@ export default function FinancialDashboard() {
               {filteredDepenses.length}
             </span>
           </button>
+
+          <button 
+            className="flex items-center gap-2 px-5 py-3 rounded-lg font-semibold text-sm transition-all"
+            style={{ 
+              backgroundColor: activeTab === 'impayes' ? 'rgba(245, 158, 11, 0.15)' : 'transparent',
+              border: activeTab === 'impayes' ? '1px solid rgba(245, 158, 11, 0.35)' : '1px solid transparent',
+              color: activeTab === 'impayes' ? '#f59e0b' : 'var(--text-muted)',
+              boxShadow: activeTab === 'impayes' ? '0 0 12px rgba(245, 158, 11, 0.2)' : 'none',
+              cursor: 'pointer'
+            }}
+            onClick={() => setActiveTab('impayes')}
+          >
+            <AlertTriangle size={16} />
+            Impayés / Retards
+            <span 
+              style={{ 
+                marginLeft: '6px', 
+                padding: '2px 8px', 
+                borderRadius: '9999px', 
+                backgroundColor: activeTab === 'impayes' ? '#f59e0b' : 'rgba(255,255,255,0.1)',
+                color: activeTab === 'impayes' ? '#fff' : 'var(--text-muted)',
+                fontSize: '0.75rem',
+                fontWeight: 700
+              }}
+            >
+              {expiredCount}
+            </span>
+          </button>
         </div>
 
         <div className="p-4 flex flex-wrap justify-between items-center gap-4 border-b border-[rgba(255,255,255,0.05)]">
@@ -1499,6 +1535,60 @@ export default function FinancialDashboard() {
               </table>
             </div>
           )
+        )}
+
+        {/* IMPAYES TABLE */}
+        {activeTab === 'impayes' && (
+          <div className="table-responsive">
+            <table className="w-full text-left border-collapse" style={{ minWidth: '650px' }}>
+              <thead>
+                <tr style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-muted)' }}>
+                  <th className="p-4 font-medium">Membre</th>
+                  <th className="p-4 font-medium">Dernier paiement</th>
+                  <th className="p-4 font-medium">Expiré depuis le</th>
+                  <th className="p-4 font-medium">Téléphone</th>
+                  <th className="p-4 font-medium text-right">Actions / Relance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {expiredList.length === 0 ? (
+                  <tr><td colSpan="5" className="p-8 text-center text-muted">Aucun impayé trouvé. Tous les paiements sont à jour.</td></tr>
+                ) : expiredList.map(cotis => {
+                  const athletePhone = cotis.athletes?.telephone || cotis.athletes?.telephone_tuteur || '';
+                  const rawPhone = athletePhone.replace(/[^0-9]/g, '');
+                  let wpPhone = '';
+                  if (rawPhone.startsWith('0')) wpPhone = '213' + rawPhone.substring(1);
+                  else if (rawPhone.startsWith('213')) wpPhone = rawPhone;
+                  else if (rawPhone) wpPhone = '213' + rawPhone;
+                  
+                  return (
+                    <tr key={cotis.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <td className="p-4 font-medium">{formatName(cotis.athletes?.nom, cotis.athletes?.prenom)}</td>
+                      <td className="p-4">{new Date(cotis.date_paiement).toLocaleDateString('fr-FR')}</td>
+                      <td className="p-4 font-semibold text-danger">{new Date(cotis.periode_couverte_fin).toLocaleDateString('fr-FR')}</td>
+                      <td className="p-4">{athletePhone || <span className="text-muted text-xs">Non renseigné</span>}</td>
+                      <td className="p-4 text-right">
+                        {wpPhone ? (
+                          <a
+                            href={`https://wa.me/${wpPhone}?text=${encodeURIComponent(`Bonjour ${cotis.athletes?.prenom || ''}, le Sporting Club Bouira vous informe que votre adhésion a expiré le ${new Date(cotis.periode_couverte_fin).toLocaleDateString('fr-FR')}. Merci de vous rapprocher de l'administration pour le renouvellement.`)}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '8px', backgroundColor: 'rgba(37, 211, 102, 0.15)', color: '#25D366', fontWeight: 600, fontSize: '0.8rem', textDecoration: 'none' }}
+                            title="Relance WhatsApp 1-clic"
+                          >
+                            <MessageCircle size={15} />
+                            Relancer
+                          </a>
+                        ) : (
+                          <span className="text-xs text-muted">Pas de téléphone</span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
 
         {/* PAGINATION FOOTER */}
