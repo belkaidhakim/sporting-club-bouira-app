@@ -60,38 +60,40 @@ export default function LandingPage() {
       </header>
 
       {/* HERO SECTION */}
-      <main style={{ paddingTop: '100px' }}>
+      <main style={{ paddingTop: '0px' }}>
         <section style={{ 
           position: 'relative',
-          padding: '8rem 5% 6rem',
+          padding: '12rem 5% 8rem',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           textAlign: 'center',
-          minHeight: '80vh',
+          minHeight: '90vh',
           justifyContent: 'center',
           overflow: 'hidden'
         }}>
-          {/* Background Glows */}
-          <div style={{ position: 'absolute', top: '20%', left: '10%', width: '300px', height: '300px', background: 'radial-gradient(circle, rgba(96,165,250,0.15) 0%, rgba(15,23,42,0) 70%)', filter: 'blur(40px)', zIndex: 0 }} />
-          <div style={{ position: 'absolute', bottom: '10%', right: '10%', width: '400px', height: '400px', background: 'radial-gradient(circle, rgba(167,139,250,0.15) 0%, rgba(15,23,42,0) 70%)', filter: 'blur(50px)', zIndex: 0 }} />
+          {/* Background Image & Overlay */}
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 0 }}>
+            <img src="/hero-bg.jpg" alt="Piscine olympique Sporting Club Bouira" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'linear-gradient(to bottom, rgba(15,23,42,0.6) 0%, rgba(15,23,42,0.95) 100%)' }} />
+          </div>
 
           <motion.div 
             variants={containerVariants} 
             initial="hidden" 
             animate="visible"
-            style={{ position: 'relative', zIndex: 10, maxWidth: '800px' }}
+            style={{ position: 'relative', zIndex: 10, maxWidth: '900px' }}
           >
-            <motion.div variants={itemVariants} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 16px', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.2)', borderRadius: '20px', color: '#60a5fa', fontSize: '0.85rem', fontWeight: 500, marginBottom: '2rem' }}>
-              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#3b82f6', display: 'inline-block' }}></span>
+            <motion.div variants={itemVariants} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 16px', background: 'rgba(59, 130, 246, 0.2)', border: '1px solid rgba(59, 130, 246, 0.4)', borderRadius: '20px', color: '#93c5fd', fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '2rem' }}>
+              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#60a5fa', display: 'inline-block', boxShadow: '0 0 10px #60a5fa' }}></span>
               Inscriptions Saison 2026/2027 Ouvertes
             </motion.div>
             
-            <motion.h1 variants={itemVariants} style={{ fontSize: 'clamp(2.5rem, 5vw, 4.5rem)', fontWeight: 800, lineHeight: 1.1, marginBottom: '1.5rem', letterSpacing: '-0.02em' }}>
-              Dépassez vos limites avec le <span style={{ background: 'linear-gradient(135deg, #60a5fa, #a78bfa)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Sporting Club Bouira</span>
+            <motion.h1 variants={itemVariants} style={{ fontSize: 'clamp(3rem, 6vw, 5.5rem)', fontWeight: 900, lineHeight: 1.05, marginBottom: '1.5rem', letterSpacing: '-0.03em', fontStyle: 'italic', textTransform: 'uppercase' }}>
+              DÉPASSEZ VOS LIMITES AVEC LE <span style={{ color: '#60a5fa', textShadow: '0 0 30px rgba(96,165,250,0.5)' }}>SPORTING CLUB BOUIRA</span>
             </motion.h1>
             
-            <motion.p variants={itemVariants} style={{ fontSize: '1.1rem', color: '#94a3b8', marginBottom: '2.5rem', maxWidth: '600px', margin: '0 auto 2.5rem', lineHeight: 1.6 }}>
+            <motion.p variants={itemVariants} style={{ fontSize: '1.25rem', color: '#cbd5e1', marginBottom: '3rem', maxWidth: '700px', margin: '0 auto 3rem', lineHeight: 1.6, fontWeight: 400 }}>
               Le club de natation de référence. Que vous soyez débutant ou compétiteur, rejoignez une équipe passionnée et atteignez vos objectifs dans un cadre exceptionnel.
             </motion.p>
             
