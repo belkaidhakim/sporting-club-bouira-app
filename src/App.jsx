@@ -21,6 +21,7 @@ const UsersManagement = lazy(() => import('./pages/UsersManagement'));
 const GroupsManagement = lazy(() => import('./pages/GroupsManagement'));
 const PublicRegistration = lazy(() => import('./pages/PublicRegistration'));
 const PendingInscriptions = lazy(() => import('./pages/PendingInscriptions'));
+const LandingPage = lazy(() => import('./pages/LandingPage'));
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 
@@ -127,6 +128,7 @@ function AppRoutes() {
       <ErrorBoundary>
         <Suspense fallback={<div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', color: 'white' }}>Chargement de la page...</div>}>
           <Routes>
+            <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={session ? <Navigate to="/dashboard" replace /> : <Login />} />
             <Route path="/reset-password" element={session ? <Navigate to="/dashboard" replace /> : <ResetPassword />} />
             <Route path="/update-password" element={<UpdatePassword />} />
@@ -156,7 +158,7 @@ function AppRoutes() {
             
             <Route path="/users" element={<ProtectedRoute allowedRoles={['admin']}><AppLayout><UsersManagement /></AppLayout></ProtectedRoute>} />
             
-            <Route path="*" element={<Navigate to={session ? "/dashboard" : "/login"} replace />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
       </ErrorBoundary>
