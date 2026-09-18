@@ -2,56 +2,56 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
 import jsPDF from 'jspdf';
 import toast from 'react-hot-toast';
-import { TrendingUp, Search, Download, AlertTriangle, FileText, Edit, TrendingDown, DollarSign, Trash2, Eye, Printer, X, Settings, Sliders, Coins, Sparkles, CheckCircle2, Users, MessageCircle } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+import { TrendingUp, Search, Download, AlertTriangle, FileText, Edit, TrendingDown, DollarSign, Trash2, Eye, Printer, X, Settings, Sliders, Coins, Sparkles, CheckCircle2, Users, MessageCircle, FileOutput } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, PieChart, Pie, Cell } from 'recharts';
 import { z } from 'zod';
 import { useCotisations } from '../hooks/useCotisations';
 import { useDepenses } from '../hooks/useDepenses';
 import { useClubPricing } from '../hooks/useClubPricing';
 import { useAuth } from '../contexts/AuthContext';
-import { Card, Button, Skeleton } from '../components/ui';
-import { formatDA, formatDZ, formatName } from '../utils/formatters';
-import { loadClubLogoBase64 } from '../utils/pdfHelpers';
+import { Card, Button, Skeleton, Badge } from '../components/ui';
+import { formatDA, formatDZ, formatName, formatWhatsAppPhone } from '../utils/formatters';
+import { loadClubLogoBase64, generateMonthlyReportPDF } from '../utils/pdfHelpers';
 import { detectSiblingGroups } from '../utils/swimmingCategories';
+import { useTheme } from '../contexts/ThemeContext';
 
 const paymentSchema = z.object({
   athlete_id: z.string().min(1, 'Veuillez sélectionner un athlète'),
   montant_paye: z.preprocess((val) => Number(val), z.number().positive('Le montant doit être supérieur à 0')),
-  mode_paiement: z.enum(['Espèces', 'Virement', 'Chèque']),
+  mode_paiement: z.enum(['Espèces', 'Virement CCP', 'BaridiMob', 'Chèque']),
   periode_couverte_fin: z.string().min(1, 'Veuillez sélectionner une date de fin'),
 });
 
 const depenseSchema = z.object({
   montant: z.preprocess((val) => Number(val), z.number().positive('Le montant doit être supérieur à 0')),
   description: z.string().min(2, 'Description requise'),
-  categorie: z.enum(['Équipement', 'Salaire', 'Loyer', 'Événement', 'Autre']),
+  categorie: z.enum(['Location Couloirs', 'Salaires Entraîneurs', 'Achat de Matériel', 'Frais Compétition', 'Autre']),
   date_depense: z.string().min(1, 'Date requise'),
 });
 
+const PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444'];
+
 export default function FinancialDashboard() {
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+
   const { cotisations, loading: cotisLoading, fetchCotisations } = useCotisations();
   const { depenses, loading: depensesLoading, fetchDepenses } = useDepenses();
   const { user } = useAuth();
   const { fraisInscription, cotisationAdhesion, totalAdhesion, updatePricing } = useClubPricing();
   
   const [athletes, setAthletes] = useState([]);
-  const [, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
   
-  const [activeTab, setActiveTab] = useState('revenus'); // 'revenus' or 'depenses'
+  const [activeTab, setActiveTab] = useState('revenus'); // 'revenus' or 'depenses' or 'impayes'
   const [filterRevenueType, setFilterRevenueType] = useState('all'); // 'all', 'inscriptions', 'cotisations'
 
-  // Modale de Configuration des Tarifs (Admin)
+  // Modale Configuration
   const [showPricingModal, setShowPricingModal] = useState(false);
-  const [pricingFormData, setPricingFormData] = useState({
-    frais_inscription: 300,
-    cotisation_adhesion: 3000
-  });
+  const [pricingFormData, setPricingFormData] = useState({ frais_inscription: 300, cotisation_adhesion: 3000 });
 
   useEffect(() => {
-    setPricingFormData({
-      frais_inscription: fraisInscription,
-      cotisation_adhesion: cotisationAdhesion
-    });
+    setPricingFormData({ frais_inscription: fraisInscription, cotisation_adhesion: cotisationAdhesion });
   }, [fraisInscription, cotisationAdhesion]);
 
   const handleSavePricing = async (e) => {
@@ -60,44 +60,21 @@ export default function FinancialDashboard() {
     setShowPricingModal(false);
   };
   
-  // Cotisation Form State
+  // Forms
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [editingPaymentId, setEditingPaymentId] = useState(null);
-  const initialFormState = {
-    athlete_id: '',
-    montant_paye: '',
-    mode_paiement: 'Espèces',
-    periode_couverte_fin: ''
-  };
+  const initialFormState = { athlete_id: '', montant_paye: '', mode_paiement: 'Espèces', periode_couverte_fin: '' };
   const [formData, setFormData] = useState(initialFormState);
   
-  // Depense Form State
   const [showDepenseForm, setShowDepenseForm] = useState(false);
   const [editingDepenseId, setEditingDepenseId] = useState(null);
-  const initialDepenseState = {
-    montant: '',
-    description: '',
-    categorie: 'Équipement',
-    date_depense: new Date().toISOString().split('T')[0]
-  };
+  const initialDepenseState = { montant: '', description: '', categorie: 'Location Couloirs', date_depense: new Date().toISOString().split('T')[0] };
   const [depenseData, setDepenseData] = useState(initialDepenseState);
-
-  // PDF Preview State
-  const [previewPdfModal, setPreviewPdfModal] = useState({
-    isOpen: false,
-    url: null,
-    fileName: '',
-    doc: null,
-    cotisation: null
-  });
   
   // Filters
   const [searchName, setSearchName] = useState('');
   const [filterMonth, setFilterMonth] = useState('all');
   const [filterYear, setFilterYear] = useState(new Date().getFullYear().toString());
-
-  // Détection des fratries pour l'application des réductions familiales
-  const siblingMap = useMemo(() => detectSiblingGroups(athletes), [athletes]);
 
   useEffect(() => {
     fetchCotisations();
@@ -120,20 +97,12 @@ export default function FinancialDashboard() {
       result = result.filter(c => new Date(c.date_paiement).getFullYear() === parseInt(filterYear));
     }
     if (filterRevenueType === 'inscriptions') {
-      result = result.filter(c => 
-        Number(c.montant_paye) === fraisInscription || 
-        Number(c.montant_paye) === totalAdhesion || 
-        Number(c.montant_paye) === 300 || 
-        Number(c.montant_paye) === 3300
-      );
+      result = result.filter(c => Number(c.montant_paye) > 3000 || Number(c.montant_paye) === totalAdhesion); // Heuristique simple
     } else if (filterRevenueType === 'cotisations') {
-      result = result.filter(c => 
-        Number(c.montant_paye) !== fraisInscription && 
-        Number(c.montant_paye) !== 300
-      );
+      result = result.filter(c => Number(c.montant_paye) <= 3000);
     }
-    return result;
-  }, [cotisations, searchName, filterMonth, filterYear, filterRevenueType, fraisInscription, totalAdhesion]);
+    return result.sort((a,b) => new Date(b.date_paiement) - new Date(a.date_paiement));
+  }, [cotisations, searchName, filterMonth, filterYear, filterRevenueType, totalAdhesion]);
   
   const filteredDepenses = useMemo(() => {
     let result = [...depenses];
@@ -146,82 +115,41 @@ export default function FinancialDashboard() {
     if (filterYear !== 'all') {
       result = result.filter(d => new Date(d.date_depense).getFullYear() === parseInt(filterYear));
     }
-    return result;
+    return result.sort((a,b) => new Date(b.date_depense) - new Date(a.date_depense));
   }, [depenses, searchName, filterMonth, filterYear]);
 
-  const [currentPage, setCurrentPage] = useState(1);
-  const ITEMS_PER_PAGE = 10;
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [activeTab, searchName, filterMonth, filterYear, filterRevenueType]);
-
-  const currentList = activeTab === 'revenus' ? filteredCotisations : filteredDepenses;
-  const totalPages = Math.max(1, Math.ceil(currentList.length / ITEMS_PER_PAGE));
-
-  const paginatedCotisations = useMemo(() => {
-    const start = (currentPage - 1) * ITEMS_PER_PAGE;
-    return filteredCotisations.slice(start, start + ITEMS_PER_PAGE);
-  }, [filteredCotisations, currentPage]);
-
-  const paginatedDepenses = useMemo(() => {
-    const start = (currentPage - 1) * ITEMS_PER_PAGE;
-    return filteredDepenses.slice(start, start + ITEMS_PER_PAGE);
-  }, [filteredDepenses, currentPage]);
-
   const stats = useMemo(() => {
-    const totalRev = cotisations.reduce((sum, c) => sum + Number(c.montant_paye), 0);
-    const totalDep = depenses.reduce((sum, d) => sum + Number(d.montant), 0);
+    // Calcul basé sur les éléments FILTRÉS (ou totaux selon le besoin, ici on veut le total de la période filtrée)
+    const totalRev = filteredCotisations.reduce((sum, c) => sum + Number(c.montant_paye), 0);
+    const totalDep = filteredDepenses.reduce((sum, d) => sum + Number(d.montant), 0);
     
-    // Inscriptions : versements = fraisInscription, 300, totalAdhesion ou 3300
-    const inscriptionsList = cotisations.filter(c => 
-      Number(c.montant_paye) === fraisInscription || 
-      Number(c.montant_paye) === 300 || 
-      Number(c.montant_paye) === totalAdhesion || 
-      Number(c.montant_paye) === 3300
-    );
-    
-    const totalFraisInscription = inscriptionsList.reduce((sum, c) => {
-      const val = Number(c.montant_paye);
-      if (val === totalAdhesion || val === 3300) return sum + fraisInscription;
-      return sum + val;
-    }, 0);
-    
-    const countFraisInscription = inscriptionsList.length;
-    const totalCotisationsSportives = totalRev - totalFraisInscription;
-    const countCotisations = Math.max(0, cotisations.length - countFraisInscription);
+    // Heuristique : Nouvelle Inscription = Montant > 3000 (ex: 3300)
+    const inscriptionsList = filteredCotisations.filter(c => Number(c.montant_paye) > 3000 || Number(c.montant_paye) === totalAdhesion);
+    const renouvellementsList = filteredCotisations.filter(c => Number(c.montant_paye) <= 3000);
 
-    const currentMonth = new Date().getMonth();
-    const currentYear = new Date().getFullYear();
-    
-    const thisMonthRev = cotisations
-      .filter(c => {
-        const date = new Date(c.date_paiement);
-        return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
-      })
-      .reduce((sum, c) => sum + Number(c.montant_paye), 0);
-      
-    const thisMonthDep = depenses
-      .filter(d => {
-        const date = new Date(d.date_depense);
-        return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
-      })
-      .reduce((sum, d) => sum + Number(d.montant), 0);
-      
+    const totalFraisInscription = inscriptionsList.reduce((sum, c) => sum + Number(c.montant_paye), 0);
+    const totalCotisationsSportives = renouvellementsList.reduce((sum, c) => sum + Number(c.montant_paye), 0);
+
+    // Groupement des dépenses pour le PieChart
+    const depMap = {};
+    filteredDepenses.forEach(d => {
+      const cat = d.categorie || 'Autre';
+      if (!depMap[cat]) depMap[cat] = 0;
+      depMap[cat] += Number(d.montant);
+    });
+    const depensesByCategory = Object.keys(depMap).map(k => ({ name: k, value: depMap[k] }));
+
     return { 
       totalRevenue: totalRev, 
       totalFraisInscription,
-      countFraisInscription,
+      countFraisInscription: inscriptionsList.length,
       totalCotisationsSportives,
-      countCotisations,
-      countTotal: cotisations.length,
-      totalThisMonth: thisMonthRev,
+      countCotisations: renouvellementsList.length,
       totalDepenses: totalDep,
-      depensesThisMonth: thisMonthDep,
       beneficeNet: totalRev - totalDep,
-      beneficeThisMonth: thisMonthRev - thisMonthDep
+      depensesByCategory
     };
-  }, [cotisations, depenses, fraisInscription, totalAdhesion]);
+  }, [filteredCotisations, filteredDepenses, totalAdhesion]);
 
   const expiredList = useMemo(() => {
     const now = new Date();
@@ -239,233 +167,41 @@ export default function FinancialDashboard() {
     const list = [];
     lastCotisMap.forEach((c) => {
       if (new Date(c.periode_couverte_fin) < now) {
-        // Find athlete info
         const athlete = athletes.find(a => a.id === c.athlete_id);
         if (athlete) {
-          list.push({ ...c, athletes: athlete });
-        } else {
-          list.push(c);
+          list.push({ 
+            ...c, 
+            athletes: athlete, 
+            endDateStr: new Date(c.periode_couverte_fin).toLocaleDateString('fr-FR') 
+          });
         }
       }
     });
-    return list;
+    return list.sort((a,b) => new Date(a.periode_couverte_fin) - new Date(b.periode_couverte_fin));
   }, [cotisations, athletes]);
-
-  const expiredCount = expiredList.length;
-
-  const currentMonthName = useMemo(() => {
-    const months = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
-    return months[new Date().getMonth()];
-  }, []);
-
-  const chartData = useMemo(() => {
-    const currentYear = new Date().getFullYear();
-    const months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
-    
-    const currentYearDataCotis = cotisations.filter(c => new Date(c.date_paiement).getFullYear() === currentYear);
-    const currentYearDataDep = depenses.filter(d => new Date(d.date_depense).getFullYear() === currentYear);
-    
-    const monthlyRevenues = Array(12).fill(0);
-    const monthlyDepenses = Array(12).fill(0);
-    
-    currentYearDataCotis.forEach(c => {
-      const m = new Date(c.date_paiement).getMonth();
-      monthlyRevenues[m] += Number(c.montant_paye);
-    });
-    
-    currentYearDataDep.forEach(d => {
-      const m = new Date(d.date_depense).getMonth();
-      monthlyDepenses[m] += Number(d.montant);
-    });
-    
-    return months.map((month, index) => ({ 
-      name: month, 
-      Revenus: monthlyRevenues[index],
-      Dépenses: monthlyDepenses[index]
-    }));
-  }, [cotisations, depenses]);
 
   async function fetchAthletes() {
     try {
       setLoading(true);
-      const { data: athletesData, error: athError } = await supabase
-        .from('athletes')
-        .select('id, nom, prenom, telephone, telephone_tuteur')
-        .eq('est_actif', true)
-        .order('nom', { ascending: true });
-        
-      if (athError) throw athError;
+      const { data: athletesData } = await supabase.from('athletes').select('id, nom, prenom, telephone, telephone_tuteur, groupes(tarif)').eq('est_actif', true);
       setAthletes(athletesData || []);
     } catch (error) {
-      console.error('Error fetching athletes:', error.message);
+      console.error(error);
     } finally {
       setLoading(false);
     }
   }
 
-  // --- Handlers for Cotisations ---
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handlePaymentSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      paymentSchema.parse(formData);
-    } catch (err) {
-      if (err instanceof z.ZodError) { toast.error(err.errors[0].message); return; }
-    }
-    try {
-      setLoading(true);
-      if (editingPaymentId) {
-        const { error } = await supabase.from('cotisations').update(formData).eq('id', editingPaymentId);
-        if (error) throw error;
-        toast.success('Paiement modifié !');
-      } else {
-        const { error } = await supabase.from('cotisations').insert([formData]);
-        if (error) throw error;
-        toast.success('Paiement enregistré !');
-      }
-      setShowPaymentForm(false);
-      setEditingPaymentId(null);
-      setFormData(initialFormState);
-      fetchCotisations();
-    } catch (error) {
-      toast.error('Erreur : ' + error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleEditClick = (cotis) => {
-    setFormData({
-      athlete_id: cotis.athlete_id,
-      montant_paye: cotis.montant_paye,
-      mode_paiement: cotis.mode_paiement,
-      periode_couverte_fin: cotis.periode_couverte_fin ? new Date(cotis.periode_couverte_fin).toISOString().split('T')[0] : ''
-    });
-    setEditingPaymentId(cotis.id);
-    setActiveTab('revenus');
-    setShowPaymentForm(true);
-    setShowDepenseForm(false);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleDeleteCotisation = async (id) => {
-    if (!window.confirm("Voulez-vous vraiment supprimer ce paiement de cotisation ?")) return;
-    try {
-      setLoading(true);
-      const { error } = await supabase.from('cotisations').delete().eq('id', id);
-      if (error) throw error;
-      toast.success("Paiement supprimé avec succès");
-      fetchCotisations();
-    } catch (err) {
-      toast.error("Erreur lors de la suppression : " + err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // --- Handlers for Dépenses ---
-  const handleEditDepense = (dep) => {
-    setDepenseData({
-      montant: dep.montant,
-      description: dep.description,
-      categorie: dep.categorie || 'Équipement',
-      date_depense: dep.date_depense ? new Date(dep.date_depense).toISOString().split('T')[0] : ''
-    });
-    setEditingDepenseId(dep.id);
-    setActiveTab('depenses');
-    setShowDepenseForm(true);
-    setShowPaymentForm(false);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleDepenseSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      depenseSchema.parse(depenseData);
-    } catch (err) {
-      if (err instanceof z.ZodError) { toast.error(err.errors[0].message); return; }
-    }
-    try {
-      setLoading(true);
-      if (editingDepenseId) {
-        const { error } = await supabase
-          .from('depenses')
-          .update(depenseData)
-          .eq('id', editingDepenseId);
-        if (error) throw error;
-        toast.success('Dépense modifiée avec succès !');
-      } else {
-        const { error } = await supabase.from('depenses').insert([{
-          ...depenseData,
-          created_by: user?.id
-        }]);
-        if (error) throw error;
-        toast.success('Dépense enregistrée !');
-      }
-      setShowDepenseForm(false);
-      setEditingDepenseId(null);
-      setDepenseData(initialDepenseState);
-      fetchDepenses();
-    } catch (error) {
-      toast.error('Erreur : ' + error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDeleteDepense = async (id) => {
-    if (!window.confirm("Voulez-vous vraiment supprimer cette dépense ?")) return;
-    try {
-      setLoading(true);
-      const { error } = await supabase.from('depenses').delete().eq('id', id);
-      if (error) throw error;
-      toast.success("Dépense supprimée avec succès");
-      fetchDepenses();
-    } catch (err) {
-      toast.error("Erreur lors de la suppression : " + err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-
-  const checkExpirations = async () => {
-    setLoading(true);
-    try {
-      const { data: cards, error: cardsError } = await supabase.from('cartes_acces').select('athlete_id, statut').eq('statut', 'ACTIVE');
-      if (cardsError) throw cardsError;
-
-      let expiredCount = 0;
-      const now = new Date();
-
-      for (const card of cards) {
-        const { data: cotis } = await supabase
-          .from('cotisations').select('periode_couverte_fin').eq('athlete_id', card.athlete_id).order('periode_couverte_fin', { ascending: false }).limit(1);
-
-        if (cotis && cotis.length > 0) {
-          const endDate = new Date(cotis[0].periode_couverte_fin);
-          if (endDate < now) {
-            await supabase.from('cartes_acces').update({ statut: 'EXPIREE' }).eq('athlete_id', card.athlete_id);
-            expiredCount++;
-          }
-        }
-      }
-      if (expiredCount > 0) toast.success(`${expiredCount} cartes ont été expirées.`);
-      else toast.success("Aucune expiration détectée.");
-    } catch {
-      toast.error("Erreur lors de la vérification.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 15;
+  useEffect(() => { setCurrentPage(1); }, [activeTab, searchName, filterMonth, filterYear, filterRevenueType]);
+  const currentList = activeTab === 'revenus' ? filteredCotisations : (activeTab === 'depenses' ? filteredDepenses : expiredList);
+  const totalPages = Math.max(1, Math.ceil(currentList.length / ITEMS_PER_PAGE));
+  const paginatedList = useMemo(() => currentList.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE), [currentList, currentPage]);
 
   const exportToCSV = () => {
+    // Basic CSV export logic
     let headers, rows, filename;
-    
     if (activeTab === 'revenus') {
       headers = ['Date', 'Membre', 'Montant (DZ)', 'Mode de paiement', 'Date de fin couverte'];
       rows = filteredCotisations.map(c => [
@@ -486,1359 +222,412 @@ export default function FinancialDashboard() {
       ]);
       filename = `depenses_${new Date().toISOString().split('T')[0]}.csv`;
     }
-    
     const BOM = "\uFEFF";
-    let csvContent = BOM + headers.join(";") + "\n" + rows.map(e => e.join(";")).join("\n");
+    const csvContent = BOM + headers.join(";") + "\n" + rows.map(e => e.join(";")).join("\n");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", filename);
-    document.body.appendChild(link);
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
     link.click();
-    document.body.removeChild(link);
   };
 
+  const handleMonthlyReport = async () => {
+    const toastId = toast.loading('Génération du rapport de clôture...');
+    try {
+      await generateMonthlyReportPDF(stats, filterMonth, filterYear);
+      toast.success('Rapport PDF généré !', { id: toastId });
+    } catch (err) {
+      toast.error('Erreur lors de la génération', { id: toastId });
+      console.error(err);
+    }
+  };
+
+  // ----- RECUS PDF GENERATION -----
   const generatePDFReceipt = async (cotisation, autoDownload = false) => {
     const toastId = toast.loading('Préparation du reçu...');
     try {
       let logoBase64 = null;
-      try {
-        logoBase64 = await loadClubLogoBase64();
-      } catch (e) {
-        console.warn('Logo non chargé, continuation sans logo:', e);
-      }
+      try { logoBase64 = await loadClubLogoBase64(); } catch(e){}
       
-      const doc = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4'
-      });
-
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const receiptNumber = `SCB-REC-${cotisation.id ? cotisation.id.substring(0, 8).toUpperCase() : Date.now().toString().slice(-6)}`;
-      const datePaiement = new Date(cotisation.date_paiement);
-      const datePaiementStr = isNaN(datePaiement.getTime()) ? '-' : datePaiement.toLocaleDateString('fr-FR');
-      const endDate = new Date(cotisation.periode_couverte_fin);
-      const endDateStr = isNaN(endDate.getTime()) ? '-' : endDate.toLocaleDateString('fr-FR');
+      const datePaiementStr = new Date(cotisation.date_paiement).toLocaleDateString('fr-FR');
+      const endDateStr = new Date(cotisation.periode_couverte_fin).toLocaleDateString('fr-FR');
+      const athleteFullName = `${(cotisation.athletes?.nom || 'NOM').toUpperCase()} ${cotisation.athletes?.prenom || ''}`;
       
-      const athleteNom = (cotisation.athletes?.nom || 'NOM').trim().toUpperCase();
-      const athletePrenom = (cotisation.athletes?.prenom || 'Prénom').trim();
-      const athleteFullName = `${athleteNom} ${athletePrenom}`;
-      const athleteGroupe = cotisation.athletes?.groupes?.nom || cotisation.athletes?.groupe || 'Non assigné';
-      const athletePhone = cotisation.athletes?.telephone || 'Non renseigné';
-      const athleteBirth = cotisation.athletes?.date_naissance ? new Date(cotisation.athletes.date_naissance).toLocaleDateString('fr-FR') : 'Non renseignée';
-      const athleteToken = cotisation.athletes?.token_qr ? cotisation.athletes.token_qr.substring(0, 14) : `SCB-${cotisation.athlete_id ? cotisation.athlete_id.substring(0, 8).toUpperCase() : 'MEMBRE'}`;
-      const formattedAmount = formatDA(cotisation.montant_paye);
+      doc.setFillColor(15, 23, 42); doc.rect(0, 0, 210, 5, 'F');
+      doc.setFillColor(16, 185, 129); doc.rect(0, 5, 210, 2, 'F');
+      if (logoBase64) doc.addImage(logoBase64, 'JPEG', 18, 12, 22, 22);
+      
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(15, 23, 42);
+      doc.text('SPORTING CLUB BOUIRA', 45, 18);
+      doc.setFontSize(8.5); doc.setTextColor(16, 185, 129);
+      doc.text('REÇU DE PAIEMENT', 45, 23.5);
 
-      // 1. BANDEAU COULEURS SUPÉRIEUR (BLEU FONCÉ ET VERT)
-      doc.setFillColor(15, 23, 42); // Bleu Foncé (Navy)
-      doc.rect(0, 0, 210, 5, 'F');
-      doc.setFillColor(16, 185, 129); // Vert
-      doc.rect(0, 5, 210, 2, 'F');
+      doc.setFillColor(248, 250, 252); doc.roundedRect(140, 11, 52, 24, 3, 3, 'F');
+      doc.setFontSize(8.5); doc.setTextColor(15, 23, 42);
+      doc.text(receiptNumber, 166, 18, { align: 'center' });
+      doc.setTextColor(100, 116, 139); doc.text(`Date: ${datePaiementStr}`, 166, 26, { align: 'center' });
 
-      // 2. EN-TÊTE DU CLUB & LOGO
-      let headerTextX = 18;
-      if (logoBase64) {
-        try {
-          doc.addImage(logoBase64, 'JPEG', 18, 12, 22, 22);
-          headerTextX = 45;
-        } catch (e) {
-          console.warn('Erreur insertion logo dans le PDF:', e);
-        }
-      }
+      doc.setDrawColor(226, 232, 240); doc.line(18, 40, 192, 40);
 
-      // Nom & sous-titre officiel du club
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(15);
-      doc.setTextColor(15, 23, 42); // Bleu Foncé
-      doc.text('SPORTING CLUB BOUIRA', headerTextX, 18);
+      doc.setFontSize(10); doc.setTextColor(15, 23, 42);
+      doc.text("ADHÉRENT :", 18, 50);
+      doc.setFontSize(14); doc.setTextColor(16, 185, 129);
+      doc.text(athleteFullName, 18, 58);
 
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8.5);
-      doc.setTextColor(16, 185, 129); // Vert
-      doc.text('CLUB AMATEUR SPORTIF SPORTING BOUIRA', headerTextX, 23.5);
+      doc.setFontSize(10); doc.setTextColor(15, 23, 42);
+      doc.text("DÉTAILS DU RÈGLEMENT :", 18, 70);
+      
+      doc.setFontSize(9); doc.setTextColor(100, 116, 139);
+      doc.text("Montant payé :", 18, 80); doc.setTextColor(15, 23, 42); doc.text(`${formatDA(cotisation.montant_paye)} DA`, 60, 80);
+      doc.setTextColor(100, 116, 139); doc.text("Période couverte :", 18, 88); doc.setTextColor(15, 23, 42); doc.text(`Jusqu'au ${endDateStr}`, 60, 88);
+      doc.setTextColor(100, 116, 139); doc.text("Mode de paiement :", 18, 96); doc.setTextColor(15, 23, 42); doc.text(cotisation.mode_paiement || "Espèces", 60, 96);
 
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7.5);
-      doc.setTextColor(100, 116, 139);
-      doc.text('Siège Social : Complexe Sportif, Wilaya de Bouira · Algérie', headerTextX, 28.5);
-      doc.text('Tél : +213 (0) 550 00 00 00 · Email : contact@sportingclub-bouira.com', headerTextX, 33);
+      doc.setFillColor(255, 255, 255); doc.roundedRect(110, 120, 82, 40, 3, 3, 'F');
+      doc.setDrawColor(203, 213, 225); doc.roundedRect(110, 120, 82, 40, 3, 3, 'S');
+      doc.setFontSize(8); doc.text("Cachet & Signature SCB :", 116, 127);
 
-      // Boîte Badge Numéro de reçu (en haut à droite)
-      doc.setFillColor(248, 250, 252);
-      doc.roundedRect(140, 11, 52, 24, 3, 3, 'F');
-      doc.setDrawColor(15, 23, 42);
-      doc.setLineWidth(0.4);
-      doc.roundedRect(140, 11, 52, 24, 3, 3, 'S');
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8.5);
-      doc.setTextColor(15, 23, 42);
-      doc.text('REÇU DE PAIEMENT', 166, 17, { align: 'center' });
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      doc.setTextColor(16, 185, 129);
-      doc.text(receiptNumber, 166, 23, { align: 'center' });
-
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7.5);
-      doc.setTextColor(100, 116, 139);
-      doc.text(`Émis le : ${datePaiementStr}`, 166, 29, { align: 'center' });
-
-      // Ligne de séparation
-      doc.setDrawColor(226, 232, 240);
-      doc.setLineWidth(0.5);
-      doc.line(18, 39, 192, 39);
-
-      // 3. SECTION 1 : INFORMATIONS DE L'ATHLÈTE / MEMBRE (y = 44 à 80)
-      doc.setFillColor(248, 250, 252);
-      doc.roundedRect(18, 44, 174, 36, 3, 3, 'F');
-      doc.setDrawColor(226, 232, 240);
-      doc.roundedRect(18, 44, 174, 36, 3, 3, 'S');
-
-      // Bandeau titre section
-      doc.setFillColor(241, 245, 249);
-      doc.roundedRect(18, 44, 174, 7.5, 3, 3, 'F');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      doc.setTextColor(15, 23, 42);
-      doc.text("INFORMATIONS DE L'ADHÉRENT", 24, 49.5);
-
-      // Colonne Gauche
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
-      doc.setTextColor(100, 116, 139);
-      doc.text("NOM & PRÉNOM :", 24, 58);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(11);
-      doc.setTextColor(15, 23, 42);
-      doc.text(athleteFullName, 24, 65);
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
-      doc.setTextColor(100, 116, 139);
-      doc.text("GROUPE / SECTION :", 24, 73);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8.5);
-      doc.setTextColor(30, 41, 59);
-      doc.text(athleteGroupe, 58, 73);
-
-      // Colonne Droite
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
-      doc.setTextColor(100, 116, 139);
-      doc.text("TÉLÉPHONE :", 115, 58);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8.5);
-      doc.setTextColor(30, 41, 59);
-      doc.text(athletePhone, 142, 58);
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
-      doc.setTextColor(100, 116, 139);
-      doc.text("NÉ(E) LE :", 115, 65.5);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8.5);
-      doc.setTextColor(30, 41, 59);
-      doc.text(athleteBirth, 142, 65.5);
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
-      doc.setTextColor(100, 116, 139);
-      doc.text("ID BADGE :", 115, 73);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      doc.setTextColor(15, 23, 42);
-      doc.text(athleteToken, 142, 73);
-
-      // 4. SECTION 2 : DÉTAILS DU PAIEMENT & PRESTATION (y = 86 à 144)
-      // En-tête tableau
-      doc.setFillColor(15, 23, 42); // Bleu Foncé
-      doc.roundedRect(18, 86, 174, 8.5, 2, 2, 'F');
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
-      doc.setTextColor(255, 255, 255);
-      doc.text("DÉSIGNATION DE LA PRESTATION", 24, 91.5);
-      doc.text("MODE RÈGLEMENT", 95, 91.5);
-      doc.text("PÉRIODE COUVERTE", 132, 91.5);
-      doc.text("MONTANT", 186, 91.5, { align: 'right' });
-
-      // Ligne du tableau
-      doc.setFillColor(255, 255, 255);
-      doc.rect(18, 94.5, 174, 24, 'F');
-      doc.setDrawColor(226, 232, 240);
-      doc.setLineWidth(0.4);
-      doc.rect(18, 94.5, 174, 24, 'S');
-
-      // Libellé prestation
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(9);
-      doc.setTextColor(15, 23, 42);
-      doc.text("Cotisation sportive & droit d'accès club", 24, 103);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7.5);
-      doc.setTextColor(100, 116, 139);
-      doc.text("Accès régulier aux séances d'entraînement selon planning", 24, 109);
-
-      // Mode règlement
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8.5);
-      doc.setTextColor(30, 41, 59);
-      doc.text(cotisation.mode_paiement || "Espèces", 95, 105);
-
-      // Période couverte
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8.5);
-      doc.setTextColor(15, 23, 42);
-      doc.text(`Jusqu'au ${endDateStr}`, 132, 105);
-
-      // Montant ligne
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(10.5);
-      doc.setTextColor(16, 185, 129); // Vert
-      doc.text(formattedAmount, 186, 105, { align: 'right' });
-
-      // Bloc Total & Validation verte (y = 123 à 144)
-      doc.setFillColor(240, 253, 244);
-      doc.roundedRect(18, 123, 174, 21, 3, 3, 'F');
-      doc.setDrawColor(134, 239, 172);
-      doc.setLineWidth(0.5);
-      doc.roundedRect(18, 123, 174, 21, 3, 3, 'S');
-
-      // Pastille verte
-      doc.setFillColor(220, 252, 231);
-      doc.roundedRect(24, 128, 48, 11, 5.5, 5.5, 'F');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
-      doc.setTextColor(21, 128, 61);
-      doc.text("✔ RÈGLEMENT EFFECTUÉ", 48, 135, { align: 'center' });
-
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8);
-      doc.setTextColor(100, 116, 139);
-      doc.text("Paiement intégral validé par l'administration du club.", 78, 135);
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      doc.setTextColor(100, 116, 139);
-      doc.text("TOTAL RÉGLÉ :", 142, 131);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(13);
-      doc.setTextColor(21, 128, 61);
-      doc.text(formattedAmount, 186, 139, { align: 'right' });
-
-      // 5. SECTION 3 : CONDITIONS & MENTIONS LÉGALES (y = 150 à 172)
-      doc.setFillColor(248, 250, 252);
-      doc.roundedRect(18, 150, 174, 22, 3, 3, 'F');
-      doc.setDrawColor(226, 232, 240);
-      doc.setLineWidth(0.4);
-      doc.roundedRect(18, 150, 174, 22, 3, 3, 'S');
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
-      doc.setTextColor(15, 23, 42);
-      doc.text("CONDITIONS D'ACCÈS & RÈGLEMENT INTÉRIEUR", 24, 156);
-
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7);
-      doc.setTextColor(100, 116, 139);
-      doc.text("• Le présent reçu certifie le paiement effectif de la cotisation pour la durée définie ci-dessus.", 24, 161);
-      doc.text("• La présentation de la carte d'adhérent avec son QR Code est obligatoire lors de chaque séance d'entraînement.", 24, 165);
-      doc.text("• Ce document doit être précieusement conservé par l'adhérent ou son représentant légal.", 24, 169);
-
-      // 6. SECTION 4 : SIGNATURES & CACHET OFFICIEL (y = 178 à 230)
-      // Cadre gauche - Adhérent
-      doc.setFillColor(255, 255, 255);
-      doc.roundedRect(18, 178, 82, 50, 3, 3, 'F');
-      doc.setDrawColor(203, 213, 225);
-      doc.setLineWidth(0.4);
-      doc.roundedRect(18, 178, 82, 50, 3, 3, 'S');
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      doc.setTextColor(15, 23, 42);
-      doc.text("Signature de l'adhérent ou tuteur légal :", 24, 185);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6.8);
-      doc.setTextColor(148, 163, 184);
-      doc.text('(Faire précéder de la mention "Lu et approuvé")', 24, 189);
-
-      // Cadre droite - Administration
-      doc.setFillColor(255, 255, 255);
-      doc.roundedRect(110, 178, 82, 50, 3, 3, 'F');
-      doc.setDrawColor(203, 213, 225);
-      doc.roundedRect(110, 178, 82, 50, 3, 3, 'S');
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      doc.setTextColor(15, 23, 42);
-      doc.text("Cachet & Signature de l'Administration :", 116, 185);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
-      doc.setTextColor(15, 23, 42);
-      doc.text("SPORTING CLUB BOUIRA", 116, 190);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6.8);
-      doc.setTextColor(16, 185, 129);
-      doc.text("Club Amateur Sportif Sporting Bouira", 116, 194);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6.8);
-      doc.setTextColor(148, 163, 184);
-      doc.text("Secrétariat Général / Trésorerie", 116, 198);
-
-      // 7. PIED DE PAGE OFFICIEL (y = 265 à 280)
-      doc.setDrawColor(226, 232, 240);
-      doc.setLineWidth(0.5);
-      doc.line(18, 268, 192, 268);
-
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7);
-      doc.setTextColor(148, 163, 184);
-      doc.text(`Sporting Club Bouira · Club Amateur Sportif Sporting Bouira · Document généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`, 105, 273, { align: 'center' });
-      doc.text("Ce reçu officiel ne peut être raturé ni modifié sans autorisation préalable de la direction.", 105, 277, { align: 'center' });
-
-      // Bandeau inférieur (Bleu Foncé et Vert)
-      doc.setFillColor(16, 185, 129); // Vert
-      doc.rect(0, 290, 210, 2, 'F');
-      doc.setFillColor(15, 23, 42); // Bleu Foncé
-      doc.rect(0, 292, 210, 5, 'F');
-
-      const sanitizedName = (cotisation.athletes?.nom || 'Adherent').replace(/[^a-zA-Z0-9_-]/g, '_');
-      const dateFile = datePaiementStr.replace(/\//g, '-');
-      const fileName = `Recu_Paiement_${sanitizedName}_${dateFile}.pdf`;
+      doc.setDrawColor(226, 232, 240); doc.line(18, 275, 192, 275);
+      doc.setFontSize(7); doc.setTextColor(148, 163, 184);
+      doc.text(`Reçu généré le ${new Date().toLocaleDateString('fr-FR')} - Ne peut être modifié.`, 105, 280, { align: 'center' });
 
       if (autoDownload) {
-        doc.save(fileName);
-        toast.dismiss(toastId);
-        toast.success('Reçu PDF téléchargé avec succès !');
+        doc.save(`${receiptNumber}.pdf`);
+        toast.success('Reçu téléchargé !', { id: toastId });
       } else {
         const pdfBlob = doc.output('blob');
-        const blobUrl = URL.createObjectURL(pdfBlob);
-        setPreviewPdfModal({
-          isOpen: true,
-          url: blobUrl,
-          fileName: fileName,
-          doc: doc,
-          cotisation: cotisation
-        });
+        const pdfUrl = URL.createObjectURL(pdfBlob);
+        window.open(pdfUrl, '_blank');
         toast.dismiss(toastId);
-        toast.success('Aperçu du document prêt !');
       }
-    } catch (err) {
-      toast.dismiss(toastId);
-      console.error('Erreur génération PDF:', err);
-      toast.error('Erreur lors de la génération de l\'aperçu : ' + err.message);
+    } catch (e) {
+      console.error(e);
+      toast.error('Erreur PDF', { id: toastId });
     }
   };
 
-  const handleClosePdfPreview = () => {
-    if (previewPdfModal.url) {
-      URL.revokeObjectURL(previewPdfModal.url);
-    }
-    setPreviewPdfModal({ isOpen: false, url: null, fileName: '', doc: null, cotisation: null });
-  };
-
-  const handleDownloadCurrentPdf = () => {
-    if (previewPdfModal.doc && previewPdfModal.fileName) {
-      previewPdfModal.doc.save(previewPdfModal.fileName);
-      toast.success('Document téléchargé avec succès !');
-    }
-  };
-
-  const handlePrintCurrentPdf = () => {
-    const iframe = document.getElementById('pdf-preview-iframe');
-    if (iframe && iframe.contentWindow) {
-      try {
-        iframe.contentWindow.focus();
-        iframe.contentWindow.print();
-        return;
-      } catch (e) {
-        console.warn('Impression via iframe directe indisponible:', e);
-      }
-    }
-    if (previewPdfModal.url) {
-      const printWin = window.open(previewPdfModal.url, '_blank');
-      if (printWin) {
-        printWin.onload = () => printWin.print();
-      }
+  const getPaymentModeBadge = (mode) => {
+    switch(mode) {
+      case 'BaridiMob': return <Badge style={{ backgroundColor: 'rgba(234, 179, 8, 0.15)', color: '#ca8a04', borderColor: 'transparent' }}>🟡 BaridiMob</Badge>;
+      case 'Virement CCP': return <Badge style={{ backgroundColor: 'rgba(59, 130, 246, 0.15)', color: '#2563eb', borderColor: 'transparent' }}>🔵 CCP</Badge>;
+      case 'Chèque': return <Badge style={{ backgroundColor: 'rgba(139, 92, 246, 0.15)', color: '#7c3aed', borderColor: 'transparent' }}>🟣 Chèque</Badge>;
+      default: return <Badge style={{ backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#059669', borderColor: 'transparent' }}>🟢 Espèces</Badge>;
     }
   };
 
   return (
-    <div>
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+    <div className="pb-20">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <div>
-          <h1>Tableau de bord financier</h1>
-          <p>Suivez vos revenus, vos dépenses et calculez vos bénéfices avec ventilation des frais.</p>
+          <h1>Gestion Financière</h1>
+          <p className="text-muted">Revenus, Dépenses et Clôture Mensuelle</p>
         </div>
-        <div className="flex flex-wrap gap-3">
-          <Button 
-            variant="secondary" 
-            onClick={() => setShowPricingModal(true)} 
-            style={{ 
-              display: 'inline-flex', 
-              alignItems: 'center', 
-              gap: '6px',
-              backgroundColor: 'rgba(99, 102, 241, 0.12)',
-              borderColor: 'rgba(99, 102, 241, 0.35)', 
-              color: '#818cf8',
-              fontWeight: 600
-            }}
-            title="Modifier les frais d'inscription et cotisations du club"
-          >
-            <Settings size={17} /> Tarifs Club ({formatDA(fraisInscription)} / {formatDA(cotisationAdhesion)})
+        <div className="flex gap-2">
+          {/* Phase 5 : Bouton Clôture Mensuelle */}
+          <Button variant="secondary" onClick={handleMonthlyReport} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <FileOutput size={16} /> Clôturer le mois (PDF)
           </Button>
+          <Button variant="primary" onClick={() => { setActiveTab('revenus'); setShowPaymentForm(true); setEditingPaymentId(null); setFormData(initialFormState); }}>
+            + Encaisser
+          </Button>
+        </div>
+      </div>
 
-          <Button variant="secondary" onClick={checkExpirations} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-            <AlertTriangle size={18} className="text-warning" /> Expirations
-            {expiredCount > 0 && (
-              <span 
-                style={{ 
-                  backgroundColor: '#ef4444', 
-                  color: 'white', 
-                  borderRadius: '9999px', 
-                  padding: '2px 7px', 
-                  fontSize: '0.75rem', 
-                  fontWeight: 700,
-                  lineHeight: 1,
-                  boxShadow: '0 0 8px rgba(239, 68, 68, 0.5)'
-                }}
-                title={`${expiredCount} cotisation(s) expirée(s)`}
-              >
-                {expiredCount}
-              </span>
+      {/* FILTRES GLOBAUX */}
+      <Card className="p-4 mb-6">
+        <div className="flex flex-wrap gap-4 items-center">
+          <div className="flex-1 min-w-[200px]">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={18} />
+              <input type="text" placeholder="Rechercher (Nom ou Description)..." className="form-input pl-10 w-full" value={searchName} onChange={(e) => setSearchName(e.target.value)} />
+            </div>
+          </div>
+          <select className="form-select w-auto" value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)}>
+            <option value="all">Tous les mois</option>
+            {['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'].map((m, i) => (
+              <option key={i} value={i}>{m}</option>
+            ))}
+          </select>
+          <select className="form-select w-auto" value={filterYear} onChange={(e) => setFilterYear(e.target.value)}>
+            <option value="all">Toutes les années</option>
+            {[2023, 2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </div>
+      </Card>
+
+      {/* KPI CARDS (Phase 5: Ventilation des revenus) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        {/* REVENUS (VENTILÉS) */}
+        <Card className="p-5 flex flex-col justify-between" style={{ borderLeft: '4px solid #10b981' }}>
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <p className="text-sm font-bold text-muted uppercase tracking-wider mb-1">Encaissements Globaux</p>
+              <h2 className="text-2xl font-bold" style={{ color: '#10b981' }}>+ {formatDA(stats.totalRevenue)} DA</h2>
+            </div>
+            <div className="p-2 bg-emerald-500/10 text-emerald-500 rounded-lg"><TrendingUp size={24} /></div>
+          </div>
+          <div className="pt-3 border-t border-[var(--border-color)]">
+            <div className="flex justify-between text-xs mb-1">
+              <span className="text-muted">Nouvelles Inscriptions ({stats.countFraisInscription}) :</span>
+              <span className="font-semibold">{formatDA(stats.totalFraisInscription)} DA</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-muted">Renouvellements ({stats.countCotisations}) :</span>
+              <span className="font-semibold">{formatDA(stats.totalCotisationsSportives)} DA</span>
+            </div>
+          </div>
+        </Card>
+
+        {/* DÉPENSES */}
+        <Card className="p-5 flex flex-col justify-between" style={{ borderLeft: '4px solid #ef4444' }}>
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <p className="text-sm font-bold text-muted uppercase tracking-wider mb-1">Décaissements Globaux</p>
+              <h2 className="text-2xl font-bold" style={{ color: '#ef4444' }}>- {formatDA(stats.totalDepenses)} DA</h2>
+            </div>
+            <div className="p-2 bg-red-500/10 text-red-500 rounded-lg"><TrendingDown size={24} /></div>
+          </div>
+          <div className="pt-3 border-t border-[var(--border-color)]">
+            <p className="text-xs text-muted mb-2">Répartition des dépenses :</p>
+            {stats.depensesByCategory.length === 0 ? (
+              <span className="text-xs italic text-muted">Aucune dépense</span>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {stats.depensesByCategory.slice(0, 3).map((cat, i) => (
+                  <span key={i} className="text-[10px] bg-slate-500/10 px-2 py-0.5 rounded">{cat.name}</span>
+                ))}
+              </div>
             )}
-          </Button>
-          <Button variant="danger" onClick={() => { setShowDepenseForm(true); setShowPaymentForm(false); }}>
-            - Dépense
-          </Button>
-          <Button variant="primary" onClick={() => { setShowPaymentForm(true); setShowDepenseForm(false); setEditingPaymentId(null); setFormData(initialFormState); }}>
-            + Revenu
-          </Button>
-        </div>
-      </div>
-
-      {/* TOP KPIs - SÉPARATION DISTINCTE DES FRAIS D'INSCRIPTION & COTISATIONS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-        {/* CARTE 1 : FRAIS D'INSCRIPTION SÉPARÉS */}
-        <Card className="flex-col gap-3" style={{ borderLeft: '4px solid #6366f1' }}>
-          <div className="flex justify-between items-start">
-            <div>
-              <h3 className="text-sm font-semibold text-muted mb-0">Frais d'Inscription</h3>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Dossiers & Badges QR</span>
-            </div>
-            <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: 'rgba(99, 102, 241, 0.12)', color: '#818cf8' }}>
-              <Coins size={20} />
-            </div>
-          </div>
-          <div style={{ fontSize: '1.85rem', fontWeight: 'bold', fontFamily: 'Outfit', color: '#818cf8' }}>
-            + {formatDZ(stats.totalFraisInscription)}
-          </div>
-          <div className="text-xs text-muted" style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px border-dashed rgba(255,255,255,0.05)', paddingTop: '5px' }}>
-            <span>Adhérents inscrits :</span>
-            <span style={{ fontWeight: 700, color: '#818cf8' }}>{stats.countFraisInscription} dossier(s) ({formatDA(fraisInscription)}/u)</span>
           </div>
         </Card>
 
-        {/* CARTE 2 : COTISATIONS SPORTIVES SÉPARÉES */}
-        <Card className="flex-col gap-3" style={{ borderLeft: '4px solid var(--accent-success)' }}>
-          <div className="flex justify-between items-start">
+        {/* SOLDE */}
+        <Card className="p-5 flex flex-col justify-between" style={{ borderLeft: `4px solid ${stats.beneficeNet >= 0 ? '#3b82f6' : '#f59e0b'}` }}>
+          <div className="flex justify-between items-start mb-4">
             <div>
-              <h3 className="text-sm font-semibold text-muted mb-0">Cotisations Sportives</h3>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Entraînements & Sections</span>
+              <p className="text-sm font-bold text-muted uppercase tracking-wider mb-1">Solde Net Période</p>
+              <h2 className="text-2xl font-bold" style={{ color: stats.beneficeNet >= 0 ? '#3b82f6' : '#f59e0b' }}>
+                {stats.beneficeNet > 0 ? '+' : ''} {formatDA(stats.beneficeNet)} DA
+              </h2>
             </div>
-            <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: 'rgba(16, 185, 129, 0.1)', color: 'var(--accent-success)' }}>
-              <TrendingUp size={20} />
-            </div>
+            <div className="p-2 bg-blue-500/10 text-blue-500 rounded-lg"><Coins size={24} /></div>
           </div>
-          <div style={{ fontSize: '1.85rem', fontWeight: 'bold', fontFamily: 'Outfit', color: 'var(--accent-success)' }}>
-            + {formatDZ(stats.totalCotisationsSportives)}
-          </div>
-          <div className="text-xs text-muted" style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px border-dashed rgba(255,255,255,0.05)', paddingTop: '5px' }}>
-            <span>Versements :</span>
-            <span style={{ fontWeight: 700, color: 'var(--accent-success)' }}>{stats.countCotisations} reçu(s) ({formatDA(cotisationAdhesion)}/mois)</span>
-          </div>
-        </Card>
-
-        {/* CARTE 3 : TOTAL DÉPENSES */}
-        <Card className="flex-col gap-3" style={{ borderLeft: '4px solid var(--accent-danger)' }}>
-          <div className="flex justify-between items-start">
-            <div>
-              <h3 className="text-sm font-semibold text-muted mb-0">Total Dépenses</h3>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Achats & Frais Club</span>
-            </div>
-            <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: 'var(--accent-danger)' }}>
-              <TrendingDown size={20} />
-            </div>
-          </div>
-          <div style={{ fontSize: '1.85rem', fontWeight: 'bold', fontFamily: 'Outfit', color: 'var(--accent-danger)' }}>
-            - {formatDZ(stats.totalDepenses)}
-          </div>
-          <div className="text-xs text-muted" style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px border-dashed rgba(255,255,255,0.05)', paddingTop: '5px' }}>
-            <span>Ce mois ({currentMonthName}) :</span>
-            <span style={{ fontWeight: 600, color: 'var(--accent-danger)' }}>-{formatDZ(stats.depensesThisMonth)}</span>
-          </div>
-        </Card>
-
-        {/* CARTE 4 : BÉNÉFICE NET */}
-        <Card className="flex-col gap-3" style={{ borderLeft: '4px solid #38bdf8', border: '2px solid rgba(56, 189, 248, 0.25)' }}>
-          <div className="flex justify-between items-start">
-            <div>
-              <h3 className="text-sm font-semibold text-muted mb-0">Bénéfice Net</h3>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Solde Caisse</span>
-            </div>
-            <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8' }}>
-              <DollarSign size={20} />
-            </div>
-          </div>
-          <div style={{ fontSize: '1.85rem', fontWeight: 'bold', fontFamily: 'Outfit', color: stats.beneficeNet >= 0 ? '#38bdf8' : 'var(--accent-danger)' }}>
-            {stats.beneficeNet > 0 ? '+' : ''}{formatDZ(stats.beneficeNet)}
-          </div>
-          <div className="text-xs text-muted" style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px border-dashed rgba(255,255,255,0.05)', paddingTop: '5px' }}>
-            <span>Ce mois ({currentMonthName}) :</span>
-            <span style={{ fontWeight: 600, color: stats.beneficeThisMonth >= 0 ? '#38bdf8' : 'var(--accent-danger)' }}>
-              {stats.beneficeThisMonth > 0 ? '+' : ''}{formatDZ(stats.beneficeThisMonth)}
-            </span>
+          <div className="pt-3 border-t border-[var(--border-color)]">
+            <p className="text-xs text-muted">Bénéfice opérationnel du club sur la période sélectionnée.</p>
           </div>
         </Card>
       </div>
 
-      {/* CHART */}
-      <Card className="mb-8 p-4">
-        <div className="flex flex-wrap justify-between items-center mb-4">
-          <h3 className="text-sm font-semibold text-muted mb-0">Évolution Financière ({new Date().getFullYear()})</h3>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-            Total Revenus Cumulés : <strong style={{ color: 'var(--accent-success)' }}>+{formatDZ(stats.totalRevenue)}</strong>
-          </span>
-        </div>
-        {chartData.length > 0 ? (
-          <ResponsiveContainer width="100%" height={270}>
-            <BarChart data={chartData} margin={{ top: 10, right: 20, left: 35, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
-              <XAxis dataKey="name" stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} />
-              <YAxis 
-                stroke="var(--text-muted)" 
-                fontSize={11} 
-                tickLine={false} 
-                axisLine={false}
-                width={75}
-                tickFormatter={(val) => val >= 1000 ? `${(val / 1000).toLocaleString('fr-FR')}k DZ` : `${val} DZ`}
-              />
-              <Tooltip 
-                cursor={{ fill: 'rgba(255,255,255,0.06)' }}
-                contentStyle={{ 
-                  backgroundColor: 'rgba(15, 23, 42, 0.95)', 
-                  backdropFilter: 'blur(8px)',
-                  border: '1px solid var(--border-color)', 
-                  borderRadius: '10px',
-                  padding: '10px 14px',
-                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)'
-                }}
-                labelStyle={{ color: 'var(--text-muted)', fontWeight: 600, marginBottom: '6px', fontSize: '0.85rem' }}
-                itemStyle={{ fontSize: '0.85rem', fontWeight: 600, padding: '2px 0' }}
-                formatter={(value, name) => [
-                  `${name === 'Dépenses' ? '-' : '+'}${Number(value).toLocaleString('fr-FR')} DZ`,
-                  name
-                ]}
-              />
-              <Legend />
-              <Bar dataKey="Revenus" fill="var(--accent-success)" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="Dépenses" fill="var(--accent-danger)" radius={[4, 4, 0, 0]} />
+      {/* GRAPHES : Revenus vs Dépenses ET Camembert Dépenses (Phase 5) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        <Card className="p-5 lg:col-span-2">
+          <h3 className="text-base font-bold mb-4">Bilan Annuel</h3>
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={useMemo(() => {
+              const m = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
+              const r = Array(12).fill(0); const d = Array(12).fill(0);
+              cotisations.filter(c => new Date(c.date_paiement).getFullYear() === parseInt(filterYear)).forEach(c => r[new Date(c.date_paiement).getMonth()] += Number(c.montant_paye));
+              depenses.filter(x => new Date(x.date_depense).getFullYear() === parseInt(filterYear)).forEach(x => d[new Date(x.date_depense).getMonth()] += Number(x.montant));
+              return m.map((name, i) => ({ name, Revenus: r[i], Dépenses: d[i] }));
+            }, [cotisations, depenses, filterYear])}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
+              <XAxis dataKey="name" stroke="var(--text-muted)" fontSize={11} tickLine={false} axisLine={false} />
+              <YAxis stroke="var(--text-muted)" fontSize={11} tickLine={false} axisLine={false} />
+              <Tooltip cursor={{ fill: 'var(--bg-tertiary)' }} contentStyle={{ backgroundColor: 'var(--bg-secondary)', border: 'none', borderRadius: '8px' }} />
+              <Legend iconType="circle" />
+              <Bar dataKey="Revenus" fill="#10b981" radius={[4, 4, 0, 0]} barSize={12} />
+              <Bar dataKey="Dépenses" fill="#ef4444" radius={[4, 4, 0, 0]} barSize={12} />
             </BarChart>
           </ResponsiveContainer>
-        ) : (
-          <div className="flex items-center justify-center h-full text-muted py-10">Aucune donnée</div>
-        )}
-      </Card>
+        </Card>
 
-      {/* FORMS */}
-      {showPaymentForm && (
-        <Card className="mb-8 p-6" style={{ borderTop: '4px solid var(--accent-success)' }}>
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="mb-0">{editingPaymentId ? 'Modifier un Revenu' : 'Enregistrer un Revenu'}</h2>
-            {/* Boutons de présélection rapide */}
-            <div className="flex flex-wrap gap-2">
-              <button 
-                type="button"
-                className="btn-preset"
-                style={{ padding: '4px 10px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 700, backgroundColor: 'rgba(99, 102, 241, 0.15)', color: '#818cf8', border: '1px solid rgba(99, 102, 241, 0.3)', cursor: 'pointer' }}
-                onClick={() => setFormData(prev => ({ ...prev, montant_paye: fraisInscription }))}
-              >
-                📄 Frais Inscription ({formatDA(fraisInscription)})
-              </button>
-              <button 
-                type="button"
-                className="btn-preset"
-                style={{ padding: '4px 10px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 700, backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', cursor: 'pointer' }}
-                onClick={() => setFormData(prev => ({ ...prev, montant_paye: cotisationAdhesion }))}
-              >
-                🏅 Cotisation ({formatDA(cotisationAdhesion)})
-              </button>
-              <button 
-                type="button"
-                className="btn-preset"
-                style={{ padding: '4px 10px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 700, backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)', cursor: 'pointer' }}
-                onClick={() => setFormData(prev => ({ ...prev, montant_paye: totalAdhesion }))}
-              >
-                🌟 Inscription Totale ({formatDA(totalAdhesion)})
-              </button>
-            </div>
+        {/* Phase 5 : PieChart Dépenses */}
+        <Card className="p-5 flex flex-col">
+          <h3 className="text-base font-bold mb-2">Répartition des Dépenses</h3>
+          <p className="text-xs text-muted mb-4">Catégorisation sur la période filtrée</p>
+          <div className="flex-1 flex items-center justify-center">
+            {stats.depensesByCategory.length > 0 ? (
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie data={stats.depensesByCategory} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2} dataKey="value">
+                    {stats.depensesByCategory.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={{ backgroundColor: 'var(--bg-secondary)', border: 'none', borderRadius: '8px', fontSize: '12px' }} />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="text-sm text-muted">Aucune dépense.</div>
+            )}
           </div>
+          {/* Légende custom */}
+          <div className="flex flex-wrap gap-2 mt-4">
+            {stats.depensesByCategory.map((entry, index) => (
+              <div key={`leg-${index}`} className="flex items-center gap-1.5 text-xs">
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }}></div>
+                <span className="text-muted">{entry.name}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
 
-          <form onSubmit={handlePaymentSubmit}>
-            {/* Détection & Suggestion Réduction Fratrie */}
-            {formData.athlete_id && siblingMap.has(formData.athlete_id) && (() => {
-              const sib = siblingMap.get(formData.athlete_id);
-              const discountRate = sib.discountPercent;
-              const discountedCotis = Math.round(cotisationAdhesion * (1 - discountRate / 100));
-              return (
-                <div className="p-3 rounded-lg mb-4 flex flex-wrap items-center justify-between gap-2" style={{ backgroundColor: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.3)' }}>
-                  <div className="flex items-center gap-2">
-                    <span style={{ fontSize: '1.2rem' }}>👨‍👩‍👧‍👦</span>
-                    <div>
-                      <strong style={{ color: '#818cf8', fontSize: '0.85rem' }}>Fratrie Détectée ({sib.familyCount} enfants dans la famille)</strong>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                        Cet athlète est le <strong>{sib.siblingIndex}e enfant</strong> · Réduction suggérée : <strong style={{ color: 'var(--accent-success)' }}>{discountRate > 0 ? `-${discountRate}%` : 'Plein tarif (1er)'}</strong>
-                      </div>
-                    </div>
-                  </div>
-                  {discountRate > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setFormData(prev => ({ ...prev, montant_paye: discountedCotis }))}
-                      style={{ padding: '5px 12px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 800, backgroundColor: 'rgba(16, 185, 129, 0.2)', color: 'var(--accent-success)', border: '1px solid rgba(16, 185, 129, 0.4)', cursor: 'pointer' }}
-                    >
-                      Appliquer Tarif Fratrie -{discountRate}% ({formatDA(discountedCotis)})
-                    </button>
+      {/* GESTION DES LISTES */}
+      <Card className="p-0 overflow-hidden">
+        <div className="flex border-b border-[var(--border-color)]">
+          <button className={`flex-1 py-4 text-sm font-bold text-center border-b-2 transition-colors ${activeTab === 'revenus' ? 'border-[#10b981] text-[#10b981]' : 'border-transparent text-muted hover:bg-[var(--bg-tertiary)]'}`} onClick={() => setActiveTab('revenus')}>
+            Encaissements ({filteredCotisations.length})
+          </button>
+          <button className={`flex-1 py-4 text-sm font-bold text-center border-b-2 transition-colors ${activeTab === 'depenses' ? 'border-[#ef4444] text-[#ef4444]' : 'border-transparent text-muted hover:bg-[var(--bg-tertiary)]'}`} onClick={() => setActiveTab('depenses')}>
+            Dépenses ({filteredDepenses.length})
+          </button>
+          <button className={`flex-1 py-4 text-sm font-bold text-center border-b-2 transition-colors ${activeTab === 'impayes' ? 'border-[#f59e0b] text-[#f59e0b]' : 'border-transparent text-muted hover:bg-[var(--bg-tertiary)]'}`} onClick={() => setActiveTab('impayes')}>
+            Impayés / Retards ({expiredList.length})
+          </button>
+        </div>
+
+        <div className="p-5">
+          {activeTab === 'revenus' && (
+            <div className="table-responsive">
+              <table style={{ minWidth: '850px' }}>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Adhérent</th>
+                    <th>Montant</th>
+                    <th>Mode (Tags)</th>
+                    <th>Période Couverte</th>
+                    <th style={{ textAlign: 'right' }}>Actions (PDF / WA)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedList.length === 0 ? (
+                    <tr><td colSpan="6" className="text-center py-6 text-muted">Aucun encaissement trouvé.</td></tr>
+                  ) : (
+                    paginatedList.map(cotis => {
+                      const athleteName = cotis.athletes ? `${cotis.athletes.nom} ${cotis.athletes.prenom}` : 'Inconnu';
+                      const wpPhone = cotis.athletes ? formatWhatsAppPhone(cotis.athletes.telephone || cotis.athletes.telephone_tuteur) : null;
+                      return (
+                        <tr key={cotis.id}>
+                          <td className="text-xs text-muted">{new Date(cotis.date_paiement).toLocaleDateString('fr-FR')}</td>
+                          <td className="font-semibold text-sm">{athleteName}</td>
+                          <td className="font-bold text-emerald-500">{formatDA(cotis.montant_paye)} DA</td>
+                          <td>{getPaymentModeBadge(cotis.mode_paiement)}</td>
+                          <td className="text-xs">Jusqu'au {new Date(cotis.periode_couverte_fin).toLocaleDateString('fr-FR')}</td>
+                          <td style={{ textAlign: 'right' }}>
+                            <div className="flex justify-end items-center gap-1.5">
+                              <button onClick={() => generatePDFReceipt(cotis, true)} className="btn-secondary flex items-center justify-center p-1.5 rounded text-indigo-500 hover:bg-indigo-500/10" title="Télécharger Reçu PDF">
+                                <Download size={14} />
+                              </button>
+                              {wpPhone && (
+                                <a href={`https://wa.me/${wpPhone}?text=${encodeURIComponent(`Bonjour ${cotis.athletes?.prenom}, voici la confirmation de votre paiement de ${formatDA(cotis.montant_paye)} DA pour la cotisation SC Bouira (valable jusqu'au ${new Date(cotis.periode_couverte_fin).toLocaleDateString('fr-FR')}). Merci !`)}`} target="_blank" rel="noreferrer" className="btn-secondary flex items-center justify-center p-1.5 rounded text-[#25D366] hover:bg-[#25D366]/10" title="Envoyer Reçu WhatsApp">
+                                  <MessageCircle size={14} />
+                                </a>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
-                </div>
-              );
-            })()}
-
-            <div className="grid md:grid-cols-2 gap-6 mb-6">
-              <div className="form-group">
-                <label className="form-label">Athlète *</label>
-                <select name="athlete_id" value={formData.athlete_id} onChange={handleChange} className="form-select" required>
-                  <option value="">Sélectionner un athlète</option>
-                  {athletes.map(a => <option key={a.id} value={a.id}>{formatName(a.nom, a.prenom)}</option>)}
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Montant encaissé (DZ) *</label>
-                <input type="number" step="0.01" name="montant_paye" value={formData.montant_paye} onChange={handleChange} className="form-input" required />
-              </div>
-            </div>
-            <div className="grid md:grid-cols-2 gap-6 mb-6">
-              <div className="form-group">
-                <label className="form-label">Mode de paiement *</label>
-                <select name="mode_paiement" value={formData.mode_paiement} onChange={handleChange} className="form-select" required>
-                  <option value="Espèces">Espèces</option>
-                  <option value="Virement">Virement</option>
-                  <option value="Chèque">Chèque</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Couvre jusqu'au (Date fin) *</label>
-                <input type="date" name="periode_couverte_fin" value={formData.periode_couverte_fin} onChange={handleChange} className="form-input" required />
-              </div>
-            </div>
-            <div className="flex justify-end gap-4 mt-2">
-              <Button type="button" variant="secondary" onClick={() => setShowPaymentForm(false)}>Annuler</Button>
-              <Button type="submit" variant="primary">{editingPaymentId ? 'Mettre à jour' : 'Enregistrer'}</Button>
-            </div>
-          </form>
-        </Card>
-      )}
-
-      {showDepenseForm && (
-        <Card className="mb-8 p-6" style={{ borderTop: '4px solid var(--accent-danger)' }}>
-          <h2 className="mb-4">{editingDepenseId ? 'Modifier une Dépense' : 'Enregistrer une Dépense'}</h2>
-          <form onSubmit={handleDepenseSubmit}>
-            <div className="grid md:grid-cols-2 gap-6 mb-6">
-              <div className="form-group">
-                <label className="form-label">Description (Ex: Chasubles) *</label>
-                <input type="text" value={depenseData.description} onChange={e=>setDepenseData({...depenseData, description: e.target.value})} className="form-input" required />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Montant (DZ) *</label>
-                <input type="number" step="0.01" value={depenseData.montant} onChange={e=>setDepenseData({...depenseData, montant: e.target.value})} className="form-input" required />
-              </div>
-            </div>
-            <div className="grid md:grid-cols-2 gap-6 mb-6">
-              <div className="form-group">
-                <label className="form-label">Catégorie *</label>
-                <select value={depenseData.categorie} onChange={e=>setDepenseData({...depenseData, categorie: e.target.value})} className="form-select" required>
-                  <option value="Équipement">Équipement</option>
-                  <option value="Salaire">Salaire</option>
-                  <option value="Loyer">Loyer</option>
-                  <option value="Événement">Événement</option>
-                  <option value="Autre">Autre</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Date de la dépense *</label>
-                <input type="date" value={depenseData.date_depense} onChange={e=>setDepenseData({...depenseData, date_depense: e.target.value})} className="form-input" required />
-              </div>
-            </div>
-            <div className="flex justify-end gap-4 mt-2">
-              <Button type="button" variant="secondary" onClick={() => { setShowDepenseForm(false); setEditingDepenseId(null); }}>Annuler</Button>
-              <Button type="submit" style={{ backgroundColor: 'var(--accent-danger)', color: 'white' }}>
-                {editingDepenseId ? 'Mettre à jour la dépense' : 'Enregistrer la dépense'}
-              </Button>
-            </div>
-          </form>
-        </Card>
-      )}
-
-      {/* TABLES TABS */}
-      <Card noPadding>
-        <div 
-          className="flex flex-wrap gap-2 p-3" 
-          style={{ 
-            backgroundColor: 'var(--bg-tertiary)', 
-            borderBottom: '1px solid var(--border-color)',
-            borderTopLeftRadius: 'var(--radius-lg)',
-            borderTopRightRadius: 'var(--radius-lg)'
-          }}
-        >
-          <button 
-            className="flex items-center gap-2 px-5 py-3 rounded-lg font-semibold text-sm transition-all"
-            style={{ 
-              backgroundColor: activeTab === 'revenus' ? 'rgba(16, 185, 129, 0.15)' : 'transparent',
-              border: activeTab === 'revenus' ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid transparent',
-              color: activeTab === 'revenus' ? 'var(--accent-success)' : 'var(--text-muted)',
-              boxShadow: activeTab === 'revenus' ? '0 0 12px rgba(16, 185, 129, 0.2)' : 'none',
-              cursor: 'pointer'
-            }}
-            onClick={() => setActiveTab('revenus')}
-          >
-            <TrendingUp size={16} />
-            Historique des Revenus
-            <span 
-              style={{ 
-                marginLeft: '6px', 
-                padding: '2px 8px', 
-                borderRadius: '9999px', 
-                backgroundColor: activeTab === 'revenus' ? 'var(--accent-success)' : 'rgba(255,255,255,0.1)',
-                color: activeTab === 'revenus' ? '#fff' : 'var(--text-muted)',
-                fontSize: '0.75rem',
-                fontWeight: 700
-              }}
-            >
-              {filteredCotisations.length}
-            </span>
-          </button>
-
-          <button 
-            className="flex items-center gap-2 px-5 py-3 rounded-lg font-semibold text-sm transition-all"
-            style={{ 
-              backgroundColor: activeTab === 'depenses' ? 'rgba(239, 68, 68, 0.15)' : 'transparent',
-              border: activeTab === 'depenses' ? '1px solid rgba(239, 68, 68, 0.35)' : '1px solid transparent',
-              color: activeTab === 'depenses' ? 'var(--accent-danger)' : 'var(--text-muted)',
-              boxShadow: activeTab === 'depenses' ? '0 0 12px rgba(239, 68, 68, 0.2)' : 'none',
-              cursor: 'pointer'
-            }}
-            onClick={() => setActiveTab('depenses')}
-          >
-            <TrendingDown size={16} />
-            Historique des Dépenses
-            <span 
-              style={{ 
-                marginLeft: '6px', 
-                padding: '2px 8px', 
-                borderRadius: '9999px', 
-                backgroundColor: activeTab === 'depenses' ? 'var(--accent-danger)' : 'rgba(255,255,255,0.1)',
-                color: activeTab === 'depenses' ? '#fff' : 'var(--text-muted)',
-                fontSize: '0.75rem',
-                fontWeight: 700
-              }}
-            >
-              {filteredDepenses.length}
-            </span>
-          </button>
-
-          <button 
-            className="flex items-center gap-2 px-5 py-3 rounded-lg font-semibold text-sm transition-all"
-            style={{ 
-              backgroundColor: activeTab === 'impayes' ? 'rgba(245, 158, 11, 0.15)' : 'transparent',
-              border: activeTab === 'impayes' ? '1px solid rgba(245, 158, 11, 0.35)' : '1px solid transparent',
-              color: activeTab === 'impayes' ? '#f59e0b' : 'var(--text-muted)',
-              boxShadow: activeTab === 'impayes' ? '0 0 12px rgba(245, 158, 11, 0.2)' : 'none',
-              cursor: 'pointer'
-            }}
-            onClick={() => setActiveTab('impayes')}
-          >
-            <AlertTriangle size={16} />
-            Impayés / Retards
-            <span 
-              style={{ 
-                marginLeft: '6px', 
-                padding: '2px 8px', 
-                borderRadius: '9999px', 
-                backgroundColor: activeTab === 'impayes' ? '#f59e0b' : 'rgba(255,255,255,0.1)',
-                color: activeTab === 'impayes' ? '#fff' : 'var(--text-muted)',
-                fontSize: '0.75rem',
-                fontWeight: 700
-              }}
-            >
-              {expiredCount}
-            </span>
-          </button>
-        </div>
-
-        <div className="p-4 flex flex-wrap justify-between items-center gap-4 border-b border-[rgba(255,255,255,0.05)]">
-          <div className="flex flex-wrap gap-3 items-center">
-            <div className="relative" style={{ minWidth: '220px' }}>
-              <Search size={16} style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-              <input 
-                type="text" 
-                placeholder="Rechercher par nom / motif..." 
-                className="form-input" 
-                style={{ 
-                  paddingLeft: '2.5rem', 
-                  backgroundColor: 'var(--bg-tertiary)', 
-                  border: '1px solid var(--border-color)',
-                  borderRadius: 'var(--radius-md)' 
-                }} 
-                value={searchName} 
-                onChange={(e) => setSearchName(e.target.value)} 
-              />
-            </div>
-            
-            <div className="relative" style={{ minWidth: '150px' }}>
-              <select 
-                className="form-select" 
-                style={{ 
-                  width: '100%',
-                  backgroundColor: 'var(--bg-tertiary)', 
-                  border: '1px solid var(--border-color)', 
-                  borderRadius: 'var(--radius-md)',
-                  color: 'var(--text-primary)',
-                  fontSize: '0.85rem',
-                  fontWeight: 500,
-                  padding: '0.5rem 1rem',
-                  cursor: 'pointer'
-                }} 
-                value={filterMonth} 
-                onChange={(e) => setFilterMonth(e.target.value)}
-              >
-                <option value="all">📅 Tous les mois</option>
-                {['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'].map((m, i) => (
-                  <option key={i} value={i}>{m}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="relative" style={{ minWidth: '130px' }}>
-              <select 
-                className="form-select" 
-                style={{ 
-                  width: '100%',
-                  backgroundColor: 'var(--bg-tertiary)', 
-                  border: '1px solid var(--border-color)', 
-                  borderRadius: 'var(--radius-md)',
-                  color: 'var(--text-primary)',
-                  fontSize: '0.85rem',
-                  fontWeight: 500,
-                  padding: '0.5rem 1rem',
-                  cursor: 'pointer'
-                }} 
-                value={filterYear} 
-                onChange={(e) => setFilterYear(e.target.value)}
-              >
-                <option value="all">📆 Toutes années</option>
-                <option value="2025">2025</option>
-                <option value="2026">2026</option>
-                <option value="2027">2027</option>
-              </select>
-            </div>
-
-            {/* SÉLECTEUR DE TYPE DE REVENU */}
-            {activeTab === 'revenus' && (
-              <div className="flex items-center gap-1 p-1 rounded-lg" style={{ backgroundColor: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)' }}>
-                <button
-                  type="button"
-                  className="px-3 py-1.5 rounded-md text-xs font-bold transition-all"
-                  style={{
-                    backgroundColor: filterRevenueType === 'all' ? 'var(--bg-tertiary)' : 'transparent',
-                    color: filterRevenueType === 'all' ? 'var(--text-primary)' : 'var(--text-muted)',
-                    border: 'none',
-                    cursor: 'pointer'
-                  }}
-                  onClick={() => setFilterRevenueType('all')}
-                >
-                  Tous ({stats.countTotal})
-                </button>
-                <button
-                  type="button"
-                  className="px-3 py-1.5 rounded-md text-xs font-bold transition-all"
-                  style={{
-                    backgroundColor: filterRevenueType === 'inscriptions' ? 'rgba(99, 102, 241, 0.2)' : 'transparent',
-                    color: filterRevenueType === 'inscriptions' ? '#818cf8' : 'var(--text-muted)',
-                    border: filterRevenueType === 'inscriptions' ? '1px solid rgba(99, 102, 241, 0.4)' : '1px solid transparent',
-                    cursor: 'pointer'
-                  }}
-                  onClick={() => setFilterRevenueType('inscriptions')}
-                >
-                  📄 Inscriptions ({stats.countFraisInscription})
-                </button>
-                <button
-                  type="button"
-                  className="px-3 py-1.5 rounded-md text-xs font-bold transition-all"
-                  style={{
-                    backgroundColor: filterRevenueType === 'cotisations' ? 'rgba(16, 185, 129, 0.2)' : 'transparent',
-                    color: filterRevenueType === 'cotisations' ? 'var(--accent-success)' : 'var(--text-muted)',
-                    border: filterRevenueType === 'cotisations' ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid transparent',
-                    cursor: 'pointer'
-                  }}
-                  onClick={() => setFilterRevenueType('cotisations')}
-                >
-                  🏅 Cotisations ({stats.countCotisations})
-                </button>
-              </div>
-            )}
-          </div>
-
-          <Button 
-            variant="secondary" 
-            onClick={exportToCSV}
-            style={{ 
-              display: 'inline-flex', 
-              alignItems: 'center', 
-              gap: '6px',
-              backgroundColor: 'rgba(99, 102, 241, 0.12)',
-              border: '1px solid rgba(99, 102, 241, 0.25)',
-              color: 'var(--accent-primary-hover)',
-              fontWeight: 600,
-              padding: '0.5rem 1rem',
-              borderRadius: 'var(--radius-md)',
-              transition: 'all 0.2s ease'
-            }}
-            title="Télécharger l'historique au format CSV"
-          >
-            <Download size={16} /> Exporter CSV
-          </Button>
-        </div>
-        
-        {/* REVENUS TABLE */}
-        {activeTab === 'revenus' && (
-          cotisLoading ? (
-            <div className="p-8 flex flex-col gap-4"><Skeleton height="40px" /><Skeleton height="40px" /></div>
-          ) : (
-            <div className="table-responsive">
-              <table className="w-full text-left border-collapse" style={{ minWidth: '650px' }}>
-                <thead>
-                  <tr style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-muted)' }}>
-                    <th className="p-4 font-medium">Date</th>
-                    <th className="p-4 font-medium">Membre</th>
-                    <th className="p-4 font-medium">Motif / Type</th>
-                    <th className="p-4 font-medium">Montant</th>
-                    <th className="p-4 font-medium">Mode</th>
-                    <th className="p-4 font-medium text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paginatedCotisations.length === 0 ? (
-                    <tr><td colSpan="6" className="p-8 text-center text-muted">Aucun revenu trouvé.</td></tr>
-                  ) : paginatedCotisations.map(cotis => (
-                    <tr key={cotis.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      <td className="p-4">{new Date(cotis.date_paiement).toLocaleDateString('fr-FR')}</td>
-                      <td className="p-4 font-medium">{formatName(cotis.athletes?.nom, cotis.athletes?.prenom)}</td>
-                      <td className="p-4">
-                        {Number(cotis.montant_paye) === 300 ? (
-                          <span style={{ padding: '3px 10px', borderRadius: '12px', backgroundColor: 'rgba(99, 102, 241, 0.15)', color: '#818cf8', fontSize: '0.75rem', fontWeight: 700, border: '1px solid rgba(99, 102, 241, 0.3)' }}>
-                            Frais d'inscription (300 DA)
-                          </span>
-                        ) : Number(cotis.montant_paye) === 3300 ? (
-                          <span style={{ padding: '3px 10px', borderRadius: '12px', backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#10b981', fontSize: '0.75rem', fontWeight: 700, border: '1px solid rgba(16, 185, 129, 0.3)' }}>
-                            Inscription & Adhésion (3 300 DA)
-                          </span>
-                        ) : (
-                          <span style={{ padding: '3px 10px', borderRadius: '12px', backgroundColor: 'rgba(16, 185, 129, 0.12)', color: 'var(--accent-success)', fontSize: '0.75rem', fontWeight: 600 }}>
-                            Cotisation
-                          </span>
-                        )}
-                      </td>
-                      <td className="p-4 text-success font-semibold">+{formatDZ(cotis.montant_paye)}</td>
-                      <td className="p-4">{cotis.mode_paiement}</td>
-                      <td className="p-4 text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button variant="secondary" style={{ padding: '0.4rem 0.75rem' }} onClick={() => handleEditClick(cotis)} title="Modifier ce paiement"><Edit size={16} /></Button>
-                          <Button 
-                            variant="secondary" 
-                            style={{ 
-                              padding: '0.4rem 0.75rem',
-                              backgroundColor: 'rgba(99, 102, 241, 0.12)',
-                              border: '1px solid rgba(99, 102, 241, 0.25)',
-                              color: 'var(--accent-primary-hover)',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              fontWeight: 600
-                            }} 
-                            onClick={() => generatePDFReceipt(cotis, false)} 
-                            title="Aperçu avant téléchargement / impression"
-                          >
-                            <Eye size={15} /> Aperçu
-                          </Button>
-                          <Button variant="secondary" style={{ padding: '0.4rem 0.75rem', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)' }} onClick={() => handleDeleteCotisation(cotis.id)} title="Supprimer ce paiement"><Trash2 size={16} /></Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
                 </tbody>
               </table>
             </div>
-          )
-        )}
+          )}
 
-        {/* DEPENSES TABLE */}
-        {activeTab === 'depenses' && (
-          depensesLoading ? (
-            <div className="p-8 flex flex-col gap-4"><Skeleton height="40px" /><Skeleton height="40px" /></div>
-          ) : (
+          {activeTab === 'depenses' && (
             <div className="table-responsive">
-              <table className="w-full text-left border-collapse" style={{ minWidth: '650px' }}>
+              <table style={{ minWidth: '700px' }}>
                 <thead>
-                  <tr style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-muted)' }}>
-                    <th className="p-4 font-medium">Date</th>
-                    <th className="p-4 font-medium">Motif / Description</th>
-                    <th className="p-4 font-medium">Catégorie</th>
-                    <th className="p-4 font-medium text-right">Montant</th>
-                    <th className="p-4 font-medium text-right">Actions</th>
+                  <tr>
+                    <th>Date</th>
+                    <th>Catégorie</th>
+                    <th>Description</th>
+                    <th>Montant</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {paginatedDepenses.length === 0 ? (
-                    <tr><td colSpan="5" className="p-8 text-center text-muted">Aucune dépense trouvée.</td></tr>
-                  ) : paginatedDepenses.map(dep => (
-                    <tr key={dep.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      <td className="p-4">{new Date(dep.date_depense).toLocaleDateString('fr-FR')}</td>
-                      <td className="p-4 font-medium">{dep.description}</td>
-                      <td className="p-4">
-                        <span style={{ padding: '3px 10px', borderRadius: '12px', backgroundColor: 'rgba(239, 68, 68, 0.12)', color: 'var(--accent-danger)', fontSize: '0.75rem', fontWeight: 600 }}>
-                          {dep.categorie}
-                        </span>
-                      </td>
-                      <td className="p-4 text-right text-danger font-semibold">-{formatDZ(dep.montant)}</td>
-                      <td className="p-4 text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button variant="secondary" style={{ padding: '0.4rem 0.75rem' }} onClick={() => handleEditDepense(dep)} title="Modifier cette dépense"><Edit size={16} /></Button>
-                          <Button variant="secondary" style={{ padding: '0.4rem 0.75rem', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)' }} onClick={() => handleDeleteDepense(dep.id)} title="Supprimer cette dépense"><Trash2 size={16} /></Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {paginatedList.length === 0 ? (
+                    <tr><td colSpan="4" className="text-center py-6 text-muted">Aucune dépense trouvée.</td></tr>
+                  ) : (
+                    paginatedList.map(dep => (
+                      <tr key={dep.id}>
+                        <td className="text-xs text-muted">{new Date(dep.date_depense).toLocaleDateString('fr-FR')}</td>
+                        <td><Badge style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)' }}>{dep.categorie}</Badge></td>
+                        <td className="text-sm">{dep.description}</td>
+                        <td className="font-bold text-red-500">- {formatDA(dep.montant)} DA</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
-          )
-        )}
+          )}
 
-        {/* IMPAYES TABLE */}
-        {activeTab === 'impayes' && (
-          <div className="table-responsive">
-            <table className="w-full text-left border-collapse" style={{ minWidth: '650px' }}>
-              <thead>
-                <tr style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-muted)' }}>
-                  <th className="p-4 font-medium">Membre</th>
-                  <th className="p-4 font-medium">Dernier paiement</th>
-                  <th className="p-4 font-medium">Expiré depuis le</th>
-                  <th className="p-4 font-medium">Téléphone</th>
-                  <th className="p-4 font-medium text-right">Actions / Relance</th>
-                </tr>
-              </thead>
-              <tbody>
-                {expiredList.length === 0 ? (
-                  <tr><td colSpan="5" className="p-8 text-center text-muted">Aucun impayé trouvé. Tous les paiements sont à jour.</td></tr>
-                ) : expiredList.map(cotis => {
-                  const athletePhone = cotis.athletes?.telephone || cotis.athletes?.telephone_tuteur || '';
-                  const rawPhone = athletePhone.replace(/[^0-9]/g, '');
-                  let wpPhone = '';
-                  if (rawPhone.startsWith('0')) wpPhone = '213' + rawPhone.substring(1);
-                  else if (rawPhone.startsWith('213')) wpPhone = rawPhone;
-                  else if (rawPhone) wpPhone = '213' + rawPhone;
-                  
-                  return (
-                    <tr key={cotis.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      <td className="p-4 font-medium">{formatName(cotis.athletes?.nom, cotis.athletes?.prenom)}</td>
-                      <td className="p-4">{new Date(cotis.date_paiement).toLocaleDateString('fr-FR')}</td>
-                      <td className="p-4 font-semibold text-danger">{new Date(cotis.periode_couverte_fin).toLocaleDateString('fr-FR')}</td>
-                      <td className="p-4">{athletePhone || <span className="text-muted text-xs">Non renseigné</span>}</td>
-                      <td className="p-4 text-right">
-                        {wpPhone ? (
-                          <a
-                            href={`https://wa.me/${wpPhone}?text=${encodeURIComponent(`Bonjour ${cotis.athletes?.prenom || ''}, le Sporting Club Bouira vous informe que votre adhésion a expiré le ${new Date(cotis.periode_couverte_fin).toLocaleDateString('fr-FR')}. Merci de vous rapprocher de l'administration pour le renouvellement.`)}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '8px', backgroundColor: 'rgba(37, 211, 102, 0.15)', color: '#25D366', fontWeight: 600, fontSize: '0.8rem', textDecoration: 'none' }}
-                            title="Relance WhatsApp 1-clic"
-                          >
-                            <MessageCircle size={15} />
-                            Relancer
-                          </a>
-                        ) : (
-                          <span className="text-xs text-muted">Pas de téléphone</span>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+          {/* Phase 5 : Onglet Impayés avec WhatsApp Pré-rempli */}
+          {activeTab === 'impayes' && (
+            <div className="table-responsive">
+              <table style={{ minWidth: '700px' }}>
+                <thead>
+                  <tr>
+                    <th>Adhérent</th>
+                    <th>Groupe (Tarif)</th>
+                    <th>Date d'expiration</th>
+                    <th>Retard</th>
+                    <th style={{ textAlign: 'right' }}>Relance Rapide</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedList.length === 0 ? (
+                    <tr><td colSpan="5" className="text-center py-6 text-emerald-500 font-bold"><CheckCircle2 size={32} className="mx-auto mb-2 opacity-50" /> Aucun impayé !</td></tr>
+                  ) : (
+                    paginatedList.map(cotis => {
+                      const athleteName = cotis.athletes ? `${cotis.athletes.nom} ${cotis.athletes.prenom}` : 'Inconnu';
+                      const wpPhone = cotis.athletes ? formatWhatsAppPhone(cotis.athletes.telephone || cotis.athletes.telephone_tuteur) : null;
+                      const tarif = cotis.athletes?.groupes?.tarif || 3000;
+                      
+                      const retardDays = Math.max(0, Math.floor((new Date() - new Date(cotis.periode_couverte_fin)) / (1000 * 60 * 60 * 24)));
+                      
+                      return (
+                        <tr key={`imp-${cotis.id}`} style={{ backgroundColor: isDark ? 'rgba(245, 158, 11, 0.05)' : 'rgba(245, 158, 11, 0.03)' }}>
+                          <td className="font-semibold text-sm">{athleteName}</td>
+                          <td className="text-xs text-muted">{cotis.athletes?.groupes?.nom || '-'} <br/><span className="text-[10px] text-red-400">Dû : {formatDA(tarif)} DA</span></td>
+                          <td className="text-xs font-bold text-orange-500">{cotis.endDateStr}</td>
+                          <td className="text-xs font-bold text-red-500">{retardDays} jour(s)</td>
+                          <td style={{ textAlign: 'right' }}>
+                            {wpPhone ? (
+                              <a href={`https://wa.me/${wpPhone}?text=${encodeURIComponent(`Bonjour ${cotis.athletes?.prenom}, sauf erreur de notre part, votre cotisation SC Bouira de ${formatDA(tarif)} DA a expiré le ${cotis.endDateStr}. Merci de régulariser la situation à la réception. Sportivement.`)}`} target="_blank" rel="noreferrer">
+                                <Button variant="secondary" style={{ backgroundColor: 'rgba(37, 211, 102, 0.1)', color: '#25D366', borderColor: 'transparent', padding: '0.35rem 0.75rem', fontSize: '0.75rem' }}>
+                                  <MessageCircle size={14} style={{ marginRight: '6px' }} /> Relancer
+                                </Button>
+                              </a>
+                            ) : (
+                              <span className="text-[10px] text-muted italic">Pas de numéro</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
 
-        {/* PAGINATION FOOTER */}
-        {currentList.length > 0 && (
-          <div className="p-4 flex flex-wrap justify-between items-center border-t border-[rgba(255,255,255,0.05)] text-sm gap-2">
-            <span className="text-muted" style={{ fontSize: '0.85rem' }}>
-              Affichage de {(currentPage - 1) * ITEMS_PER_PAGE + 1} à {Math.min(currentPage * ITEMS_PER_PAGE, currentList.length)} sur {currentList.length} transaction(s)
-            </span>
-            {totalPages > 1 && (
-              <div className="flex gap-2 items-center">
-                <Button 
-                  variant="secondary" 
-                  style={{ padding: '0.35rem 0.85rem', fontSize: '0.8rem' }}
-                  disabled={currentPage === 1}
-                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                >
-                  ← Précédent
-                </Button>
-                <span style={{ fontSize: '0.8rem', padding: '0 8px', color: 'var(--text-muted)' }}>
-                  Page {currentPage} / {totalPages}
-                </span>
-                <Button 
-                  variant="secondary" 
-                  style={{ padding: '0.35rem 0.85rem', fontSize: '0.8rem' }}
-                  disabled={currentPage === totalPages}
-                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                >
-                  Suivant →
-                </Button>
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex justify-between items-center mt-6 pt-4 border-t border-[var(--border-color)]">
+              <span className="text-xs text-muted">Page {currentPage} sur {totalPages}</span>
+              <div className="flex gap-2">
+                <Button variant="secondary" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} style={{ padding: '0.4rem 0.8rem' }}>Précédent</Button>
+                <Button variant="secondary" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} style={{ padding: '0.4rem 0.8rem' }}>Suivant</Button>
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
+        </div>
       </Card>
-
-      {/* MODALE D'APERÇU DU REÇU PDF */}
-      {previewPdfModal.isOpen && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.85)',
-          zIndex: 100,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '1rem',
-          backdropFilter: 'blur(5px)'
-        }}>
-          <div className="glass-panel" style={{
-            width: '920px',
-            maxWidth: '96vw',
-            maxHeight: '94vh',
-            display: 'flex',
-            flexDirection: 'column',
-            borderRadius: '16px',
-            overflow: 'hidden',
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)',
-            border: '1px solid rgba(255, 255, 255, 0.15)'
-          }}>
-            {/* Header Modale */}
-            <div className="flex justify-between items-center p-4 border-b border-[rgba(255,255,255,0.1)]" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-              <div className="flex items-center gap-3">
-                <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: 'rgba(16, 185, 129, 0.15)', color: 'var(--accent-success)' }}>
-                  <FileText size={20} />
-                </div>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    Aperçu du Reçu de Cotisation
-                  </h3>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                    {previewPdfModal.cotisation?.athletes?.nom?.toUpperCase()} {previewPdfModal.cotisation?.athletes?.prenom} · {previewPdfModal.fileName}
-                  </span>
-                </div>
-              </div>
-              <button 
-                onClick={handleClosePdfPreview}
-                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '6px', borderRadius: '8px', display: 'flex', alignItems: 'center' }}
-                title="Fermer"
-              >
-                <X size={22} />
-              </button>
-            </div>
-
-            {/* Corps du Viewer PDF */}
-            <div style={{ flex: 1, minHeight: '62vh', backgroundColor: '#525659', position: 'relative' }}>
-              {previewPdfModal.url ? (
-                <iframe
-                  id="pdf-preview-iframe"
-                  src={`${previewPdfModal.url}#toolbar=0&navpanes=0`}
-                  title="Aperçu Document PDF"
-                  style={{ width: '100%', height: '100%', border: 'none', minHeight: '62vh' }}
-                />
-              ) : (
-                <div className="flex items-center justify-center h-full text-white p-8">
-                  Chargement de l'aperçu...
-                </div>
-              )}
-            </div>
-
-            {/* Footer Modale avec Actions */}
-            <div className="p-4 flex flex-wrap justify-between items-center gap-3 border-t border-[rgba(255,255,255,0.1)]" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-              <Button variant="secondary" onClick={handleClosePdfPreview} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <X size={16} /> Fermer
-              </Button>
-              <div className="flex items-center gap-3">
-                <Button 
-                  variant="secondary" 
-                  onClick={handlePrintCurrentPdf}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                  title="Imprimer directement le document"
-                >
-                  <Printer size={16} /> Imprimer
-                </Button>
-                <Button 
-                  variant="primary" 
-                  onClick={handleDownloadCurrentPdf}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                  title="Télécharger le fichier PDF sur votre appareil"
-                >
-                  <Download size={16} /> Télécharger le PDF
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODALE DE CONFIGURATION DES TARIFS DU CLUB (ADMIN) */}
-      {showPricingModal && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.85)',
-          zIndex: 110,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '1rem',
-          backdropFilter: 'blur(6px)'
-        }}>
-          <div className="glass-panel" style={{
-            width: '540px',
-            maxWidth: '96vw',
-            borderRadius: '16px',
-            overflow: 'hidden',
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)',
-            border: '1px solid rgba(99, 102, 241, 0.3)'
-          }}>
-            <div className="flex justify-between items-center p-4 border-b border-[rgba(255,255,255,0.1)]" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-              <div className="flex items-center gap-3">
-                <div style={{ padding: '8px', borderRadius: '8px', backgroundColor: 'rgba(99, 102, 241, 0.15)', color: '#818cf8' }}>
-                  <Settings size={22} />
-                </div>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-                    Paramètres des Tarifs du Club
-                  </h3>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                    Définissez les frais d'inscription et cotisations appliqués dans toute l'application
-                  </span>
-                </div>
-              </div>
-              <button 
-                onClick={() => setShowPricingModal(false)}
-                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '6px', borderRadius: '8px', display: 'flex', alignItems: 'center' }}
-              >
-                <X size={22} />
-              </button>
-            </div>
-
-            <form onSubmit={handleSavePricing} className="p-6">
-              <div className="flex flex-col gap-4 mb-6">
-                <div>
-                  <label className="form-label font-bold text-sm mb-1.5 flex items-center justify-between">
-                    <span>📄 Frais d'Inscription (Dossier & Badge QR)</span>
-                    <span style={{ color: '#818cf8', fontWeight: 800 }}>{formatDA(pricingFormData.frais_inscription)}</span>
-                  </label>
-                  <div className="relative">
-                    <input 
-                      type="number"
-                      min="0"
-                      step="50"
-                      value={pricingFormData.frais_inscription}
-                      onChange={(e) => setPricingFormData(prev => ({ ...prev, frais_inscription: Number(e.target.value) || 0 }))}
-                      className="form-input"
-                      style={{ fontSize: '1rem', fontWeight: 700, paddingRight: '3rem' }}
-                      required
-                    />
-                    <span style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontWeight: 700 }}>
-                      DA
-                    </span>
-                  </div>
-                  <span className="text-xs text-muted mt-1 block">
-                    Frais administratifs dus lors de la première inscription de l'adhérent.
-                  </span>
-                </div>
-
-                <div>
-                  <label className="form-label font-bold text-sm mb-1.5 flex items-center justify-between">
-                    <span>🏅 Droits d'Adhésion / Cotisation Club</span>
-                    <span style={{ color: 'var(--accent-success)', fontWeight: 800 }}>{formatDA(pricingFormData.cotisation_adhesion)}</span>
-                  </label>
-                  <div className="relative">
-                    <input 
-                      type="number"
-                      min="0"
-                      step="100"
-                      value={pricingFormData.cotisation_adhesion}
-                      onChange={(e) => setPricingFormData(prev => ({ ...prev, cotisation_adhesion: Number(e.target.value) || 0 }))}
-                      className="form-input"
-                      style={{ fontSize: '1rem', fontWeight: 700, paddingRight: '3rem' }}
-                      required
-                    />
-                    <span style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontWeight: 700 }}>
-                      DA
-                    </span>
-                  </div>
-                  <span className="text-xs text-muted mt-1 block">
-                    Tarif standard de la cotisation d'entraînement ou d'adhésion sportive.
-                  </span>
-                </div>
-              </div>
-
-              {/* Aperçu du total pour nouvel adhérent */}
-              <div className="p-4 rounded-xl mb-6" style={{ backgroundColor: 'rgba(16, 185, 129, 0.08)', border: '1.5px solid rgba(16, 185, 129, 0.3)' }}>
-                <div className="flex justify-between items-center">
-                  <div>
-                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'block' }}>Total exigible à la première inscription :</span>
-                    <strong style={{ fontSize: '1.1rem', color: 'var(--accent-success)' }}>
-                      {formatDA(Number(pricingFormData.frais_inscription) + Number(pricingFormData.cotisation_adhesion))}
-                    </strong>
-                  </div>
-                  <div style={{ textAlign: 'right', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    Frais : {formatDA(pricingFormData.frais_inscription)} + Adhésion : {formatDA(pricingFormData.cotisation_adhesion)}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-3">
-                <Button type="button" variant="secondary" onClick={() => setShowPricingModal(false)}>
-                  Annuler
-                </Button>
-                <Button type="submit" variant="primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                  <CheckCircle2 size={16} /> Enregistrer & Appliquer
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
