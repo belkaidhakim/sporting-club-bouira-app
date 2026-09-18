@@ -93,7 +93,8 @@ export default function MemberPortal() {
 
   const [session, setSession] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem('member_session'));
+      const stored = localStorage.getItem('member_session');
+      return stored ? JSON.parse(stored) : null;
     } catch {
       return null;
     }
@@ -101,9 +102,8 @@ export default function MemberPortal() {
 
   const [loginData, setLoginData] = useState({ identifiant: '', date_naissance: '' });
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard', 'performances', 'announcements'
+  const [activeTab, setActiveTab] = useState('dashboard');
   
-  // Data for performances
   const [performances, setPerformances] = useState([]);
 
   const { theme } = useTheme();
@@ -128,11 +128,18 @@ export default function MemberPortal() {
   }, []);
 
   const loadPerformances = (athleteId) => {
-    const localSwim = localStorage.getItem(`scb_athlete_perfs_${athleteId}`);
-    if (localSwim) {
-      try {
-        setPerformances(JSON.parse(localSwim));
-      } catch {}
+    try {
+      const localSwim = localStorage.getItem(`scb_athlete_perfs_${athleteId}`);
+      if (localSwim) {
+        const parsed = JSON.parse(localSwim);
+        if (Array.isArray(parsed)) {
+          setPerformances(parsed);
+        } else {
+          setPerformances([]);
+        }
+      }
+    } catch (e) {
+      setPerformances([]);
     }
   };
 
@@ -159,7 +166,6 @@ export default function MemberPortal() {
     e.preventDefault();
     setLoading(true);
     try {
-      // Rechercher l'athlète par date de naissance en premier
       const { data, error } = await supabase
         .from('athletes')
         .select(`*, cotisations (*), cartes_acces (*)`)
@@ -169,12 +175,11 @@ export default function MemberPortal() {
       
       if (data && data.length > 0) {
         const ident = loginData.identifiant.toLowerCase().trim();
-        // Filtrer par Matricule, ou Téléphone
         const matched = data.find(a => 
           (a.token_qr && a.token_qr.toLowerCase() === ident) ||
           (a.telephone && a.telephone.replace(/\s+/g, '') === ident.replace(/\s+/g, '')) ||
           (a.telephone_tuteur && a.telephone_tuteur.replace(/\s+/g, '') === ident.replace(/\s+/g, '')) ||
-          (a.nom && a.nom.toLowerCase() === ident) // fallback si nom de famille
+          (a.nom && a.nom.toLowerCase() === ident)
         );
 
         if (matched) {
@@ -202,51 +207,88 @@ export default function MemberPortal() {
   };
 
   const getLatestCotisation = () => {
-    if (!session?.cotisations || session.cotisations.length === 0) return null;
-    return [...session.cotisations].sort((a, b) => new Date(b.periode_couverte_fin) - new Date(a.periode_couverte_fin))[0];
+    const cotis = Array.isArray(session?.cotisations) ? session.cotisations : [];
+    if (cotis.length === 0) return null;
+    return [...cotis].sort((a, b) => {
+      const dA = new Date(a.periode_couverte_fin).getTime() || 0;
+      const dB = new Date(b.periode_couverte_fin).getTime() || 0;
+      return dB - dA;
+    })[0];
   };
 
   const getStatus = () => {
     const latest = getLatestCotisation();
-    if (!latest) return { color: "#ef4444", icon: <AlertTriangle size={16}/>, label: t.noPayment };
+    if (!latest) return { color: "#ef4444", icon: <AlertTriangle size={16}/>, label: t.noPayment, ok: false };
     
-    const endDate = new Date(latest.periode_couverte_fin);
-    const now = new Date();
+    try {
+      const endDate = new Date(latest.periode_couverte_fin);
+      const now = new Date();
+      if (endDate >= now) return { color: "#10b981", icon: <CheckCircle size={16}/>, label: t.active, ok: true };
+    } catch {}
     
-    if (endDate >= now) {
-      return { color: "#10b981", icon: <CheckCircle size={16}/>, label: t.active, ok: true };
-    } else {
-      return { color: "#ef4444", icon: <AlertTriangle size={16}/>, label: t.expired, ok: false };
-    }
+    return { color: "#ef4444", icon: <AlertTriangle size={16}/>, label: t.expired, ok: false };
   };
 
   const getMedicalStatus = () => {
-    // Dans la DB, certificat_medical est censé être une URL ou boolean ou date
-    // Pour simplifier l'UI: on va vérifier s'il existe (url)
     if (session?.certificat_medical) {
        return { color: "#10b981", icon: <CheckCircle size={16}/>, label: t.valid, ok: true };
     }
     return { color: "#f59e0b", icon: <AlertTriangle size={16}/>, label: t.invalid, ok: false };
   };
 
-  // Graphique des performances (on prend la nage la plus pratiquée par défaut)
+  // Graphique des performances (safe)
   const chartData = useMemo(() => {
-    if (performances.length === 0) return [];
+    if (!Array.isArray(performances) || performances.length === 0) return [];
     
-    // Trouver l'épreuve avec le plus de chronos
     const eventCounts = {};
-    performances.forEach(p => eventCounts[p.event_id] = (eventCounts[p.event_id] || 0) + 1);
-    const topEventId = Object.keys(eventCounts).sort((a, b) => eventCounts[b] - eventCounts[a])[0];
+    performances.forEach(p => {
+      if (p && p.event_id) {
+        eventCounts[p.event_id] = (eventCounts[p.event_id] || 0) + 1;
+      }
+    });
 
-    const perfs = performances.filter(p => p.event_id === topEventId).sort((a, b) => new Date(a.date_perf) - new Date(b.date_perf));
+    const keys = Object.keys(eventCounts);
+    if (keys.length === 0) return [];
+
+    const topEventId = keys.sort((a, b) => eventCounts[b] - eventCounts[a])[0];
+
+    const perfs = performances
+      .filter(p => p && p.event_id === topEventId)
+      .sort((a, b) => {
+        const dA = new Date(a.date_perf).getTime() || 0;
+        const dB = new Date(b.date_perf).getTime() || 0;
+        return dA - dB;
+      });
     
-    return perfs.map(p => ({
-      date: new Date(p.date_perf).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }),
-      temps: p.seconds,
-      chrono: p.chrono_str,
-      label: p.event_label
-    }));
+    return perfs.map(p => {
+      let dStr = '-';
+      try {
+        const d = new Date(p.date_perf);
+        if (!isNaN(d.getTime())) {
+          dStr = d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+        }
+      } catch {}
+      return {
+        date: dStr,
+        temps: p.seconds || 0,
+        chrono: p.chrono_str || '-',
+        label: p.event_label || topEventId
+      };
+    });
   }, [performances]);
+
+  // Format date helper
+  const safeFormatDate = (dateStr, options) => {
+    if (!dateStr) return '-';
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return '-';
+      if (options) return d.toLocaleString(lang === 'ar' ? 'ar-DZ' : 'fr-FR', options);
+      return d.toLocaleDateString(lang === 'ar' ? 'ar-DZ' : 'fr-FR');
+    } catch {
+      return '-';
+    }
+  };
 
   // --- RENDU LOGIN ---
   if (!session) {
@@ -255,7 +297,6 @@ export default function MemberPortal() {
         className="min-h-screen flex items-center justify-center p-4 font-sans relative"
         dir={lang === 'ar' ? 'rtl' : 'ltr'}
       >
-        {/* Background Image assombrie */}
         <div 
           className="absolute inset-0 z-0 bg-cover bg-center" 
           style={{ 
@@ -265,18 +306,8 @@ export default function MemberPortal() {
         />
 
         <div className="absolute top-6 right-6 z-20 flex gap-2">
-           <button 
-             onClick={() => setLang('fr')} 
-             className={`px-3 py-1 rounded-lg text-xs font-bold backdrop-blur-md border transition-all ${lang === 'fr' ? 'bg-sky-500 text-white border-sky-400' : 'bg-white/10 text-white/70 border-white/20'}`}
-           >
-             FR
-           </button>
-           <button 
-             onClick={() => setLang('ar')} 
-             className={`px-3 py-1 rounded-lg text-xs font-bold backdrop-blur-md border transition-all ${lang === 'ar' ? 'bg-sky-500 text-white border-sky-400' : 'bg-white/10 text-white/70 border-white/20'}`}
-           >
-             العربية
-           </button>
+           <button onClick={() => setLang('fr')} className={`px-3 py-1 rounded-lg text-xs font-bold backdrop-blur-md border transition-all ${lang === 'fr' ? 'bg-sky-500 text-white border-sky-400' : 'bg-white/10 text-white/70 border-white/20'}`}>FR</button>
+           <button onClick={() => setLang('ar')} className={`px-3 py-1 rounded-lg text-xs font-bold backdrop-blur-md border transition-all ${lang === 'ar' ? 'bg-sky-500 text-white border-sky-400' : 'bg-white/10 text-white/70 border-white/20'}`}>العربية</button>
         </div>
 
         <div className="absolute top-6 left-6 z-20">
@@ -285,7 +316,6 @@ export default function MemberPortal() {
           </Link>
         </div>
 
-        {/* Login Box */}
         <div className="w-full max-w-md relative z-10 p-8 rounded-3xl backdrop-blur-xl bg-black/40 border border-white/10 shadow-2xl">
           <div className="text-center mb-8">
             <div className="w-20 h-20 mx-auto mb-4 bg-sky-500 rounded-2xl flex items-center justify-center shadow-lg shadow-sky-500/20">
@@ -347,15 +377,9 @@ export default function MemberPortal() {
             </button>
           </form>
 
-          {/* Support Link */}
           <div className="mt-8 text-center border-t border-white/10 pt-6">
             <p className="text-xs text-white/50 mb-2">{t.support}</p>
-            <a 
-              href="https://wa.me/213555000000" // Remplacez par le numéro du club
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center justify-center gap-2 text-sm font-bold text-emerald-400 hover:text-emerald-300 transition-colors"
-            >
+            <a href="https://wa.me/213555000000" target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 text-sm font-bold text-emerald-400 hover:text-emerald-300 transition-colors">
               <Phone size={16} /> {t.contactAdmin}
             </a>
           </div>
@@ -368,11 +392,11 @@ export default function MemberPortal() {
   const status = getStatus();
   const medStatus = getMedicalStatus();
   const latestCotis = getLatestCotisation();
+  const cotisationsList = Array.isArray(session?.cotisations) ? session.cotisations : [];
 
   return (
     <div className="min-h-screen pb-20 font-sans transition-colors duration-300" style={{ backgroundColor: colors.bgMain }} dir={lang === 'ar' ? 'rtl' : 'ltr'}>
       
-      {/* Header plat et propre */}
       <header className="border-b shadow-sm sticky top-0 z-50 backdrop-blur-lg" style={{ backgroundColor: `${colors.bgCard}e6`, borderColor: colors.border }}>
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-3">
@@ -387,36 +411,22 @@ export default function MemberPortal() {
                <button onClick={() => setLang('fr')} className={`px-2 py-1 rounded text-xs font-bold transition-all ${lang === 'fr' ? 'bg-sky-500 text-white' : 'text-muted'}`}>FR</button>
                <button onClick={() => setLang('ar')} className={`px-2 py-1 rounded text-xs font-bold transition-all ${lang === 'ar' ? 'bg-sky-500 text-white' : 'text-muted'}`}>AR</button>
             </div>
-            <button 
-              onClick={handleLogout} 
-              className="flex items-center gap-2 text-sm font-bold px-4 py-2 rounded-lg border hover:bg-rose-500 hover:text-white hover:border-rose-500 transition-colors"
-              style={{ borderColor: colors.border, color: colors.textMuted }}
-            >
+            <button onClick={handleLogout} className="flex items-center gap-2 text-sm font-bold px-4 py-2 rounded-lg border hover:bg-rose-500 hover:text-white hover:border-rose-500 transition-colors" style={{ borderColor: colors.border, color: colors.textMuted }}>
               <LogOut size={16} /> <span className="hidden sm:inline">{t.logout}</span>
             </button>
           </div>
         </div>
       </header>
 
-      {/* TABS NAVIGATION */}
       <div className="max-w-6xl mx-auto px-4 mt-8">
         <div className="flex gap-2 mb-8 overflow-x-auto pb-2 scrollbar-none border-b border-[var(--border-color)]">
-          <button 
-            onClick={() => setActiveTab('dashboard')}
-            className={`px-4 py-2.5 rounded-t-xl font-bold text-sm flex items-center gap-2 transition-colors ${activeTab === 'dashboard' ? 'text-sky-500 border-b-2 border-sky-500 bg-sky-500/10' : 'text-muted hover:bg-black/5'}`}
-          >
+          <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-2.5 rounded-t-xl font-bold text-sm flex items-center gap-2 transition-colors ${activeTab === 'dashboard' ? 'text-sky-500 border-b-2 border-sky-500 bg-sky-500/10' : 'text-muted hover:bg-black/5'}`}>
             <User size={18} /> {t.dashboard}
           </button>
-          <button 
-            onClick={() => setActiveTab('performances')}
-            className={`px-4 py-2.5 rounded-t-xl font-bold text-sm flex items-center gap-2 transition-colors ${activeTab === 'performances' ? 'text-sky-500 border-b-2 border-sky-500 bg-sky-500/10' : 'text-muted hover:bg-black/5'}`}
-          >
+          <button onClick={() => setActiveTab('performances')} className={`px-4 py-2.5 rounded-t-xl font-bold text-sm flex items-center gap-2 transition-colors ${activeTab === 'performances' ? 'text-sky-500 border-b-2 border-sky-500 bg-sky-500/10' : 'text-muted hover:bg-black/5'}`}>
             <TrendingUp size={18} /> {t.performances}
           </button>
-          <button 
-            onClick={() => setActiveTab('announcements')}
-            className={`px-4 py-2.5 rounded-t-xl font-bold text-sm flex items-center gap-2 transition-colors ${activeTab === 'announcements' ? 'text-sky-500 border-b-2 border-sky-500 bg-sky-500/10' : 'text-muted hover:bg-black/5'}`}
-          >
+          <button onClick={() => setActiveTab('announcements')} className={`px-4 py-2.5 rounded-t-xl font-bold text-sm flex items-center gap-2 transition-colors ${activeTab === 'announcements' ? 'text-sky-500 border-b-2 border-sky-500 bg-sky-500/10' : 'text-muted hover:bg-black/5'}`}>
             <Megaphone size={18} /> {t.announcements}
           </button>
         </div>
@@ -428,7 +438,6 @@ export default function MemberPortal() {
         {activeTab === 'dashboard' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             
-            {/* CARTE VIRTUELLE (QR) */}
             <div className="lg:col-span-1">
               <div className="rounded-2xl border p-6 flex flex-col items-center text-center shadow-sm relative overflow-hidden" style={{ backgroundColor: colors.bgCard, borderColor: colors.border }}>
                 <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-r from-sky-400 to-blue-500"></div>
@@ -460,22 +469,18 @@ export default function MemberPortal() {
               </div>
             </div>
 
-            {/* STATUTS & HISTORIQUE */}
             <div className="lg:col-span-2 space-y-6">
-              
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* Cotisation Card */}
                 <div className="rounded-2xl border p-5 relative overflow-hidden" style={{ backgroundColor: colors.bgCard, borderColor: colors.border }}>
                   <div className={`absolute top-0 right-0 w-2 h-full ${status.ok ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
                   <div className="flex items-center gap-3 mb-4">
-                    <div className={`p-2 rounded-xl ${status.ok ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>
-                      <Shield size={20} />
-                    </div>
+                    <div className={`p-2 rounded-xl ${status.ok ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}><Shield size={20} /></div>
                     <h3 className="font-bold" style={{ color: colors.textMuted }}>{t.status}</h3>
                   </div>
                   <div className={`text-2xl font-extrabold mb-1 ${status.ok ? 'text-emerald-500' : 'text-rose-500'}`}>{status.label}</div>
                   <p className="text-sm font-medium" style={{ color: colors.textMain }}>
-                    {t.validUntil} {latestCotis ? new Date(latestCotis.periode_couverte_fin).toLocaleDateString(lang === 'ar' ? 'ar-DZ' : 'fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}
+                    {t.validUntil} {latestCotis ? safeFormatDate(latestCotis.periode_couverte_fin, { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}
                   </p>
                 </div>
 
@@ -483,9 +488,7 @@ export default function MemberPortal() {
                 <div className="rounded-2xl border p-5 relative overflow-hidden" style={{ backgroundColor: colors.bgCard, borderColor: colors.border }}>
                   <div className={`absolute top-0 right-0 w-2 h-full ${medStatus.ok ? 'bg-emerald-500' : 'bg-amber-500'}`}></div>
                   <div className="flex items-center gap-3 mb-4">
-                    <div className={`p-2 rounded-xl ${medStatus.ok ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-500'}`}>
-                      <FileText size={20} />
-                    </div>
+                    <div className={`p-2 rounded-xl ${medStatus.ok ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-500'}`}><FileText size={20} /></div>
                     <h3 className="font-bold" style={{ color: colors.textMuted }}>{t.medical}</h3>
                   </div>
                   <div className={`text-2xl font-extrabold mb-1 ${medStatus.ok ? 'text-emerald-500' : 'text-amber-500'}`}>{medStatus.label}</div>
@@ -503,29 +506,31 @@ export default function MemberPortal() {
                 </div>
                 
                 <div className="p-0">
-                  {!session.cotisations || session.cotisations.length === 0 ? (
-                    <div className="p-8 text-center font-medium" style={{ color: colors.textMuted }}>
-                      {t.noHistory}
-                    </div>
+                  {cotisationsList.length === 0 ? (
+                    <div className="p-8 text-center font-medium" style={{ color: colors.textMuted }}>{t.noHistory}</div>
                   ) : (
                     <ul className="divide-y" style={{ divideColor: colors.border }}>
-                      {[...session.cotisations].sort((a, b) => new Date(b.date_paiement) - new Date(a.date_paiement)).map((cotis) => (
-                        <li key={cotis.id} className="p-4 sm:px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-500/5 transition-colors">
+                      {[...cotisationsList].sort((a, b) => {
+                        const dA = new Date(a.date_paiement).getTime() || 0;
+                        const dB = new Date(b.date_paiement).getTime() || 0;
+                        return dB - dA;
+                      }).map((cotis) => (
+                        <li key={cotis.id || Math.random()} className="p-4 sm:px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-500/5 transition-colors">
                           <div className="flex items-center gap-4">
                             <div className="w-12 h-12 rounded-xl flex flex-col items-center justify-center border bg-[var(--bg-tertiary)] border-[var(--border-color)]">
-                              <span className="text-xs font-extrabold uppercase">{new Date(cotis.periode_couverte_fin).toLocaleString(lang==='ar'?'ar-DZ':'fr-FR', { month: 'short' })}</span>
-                              <span className="text-[10px] text-muted">{new Date(cotis.periode_couverte_fin).getFullYear()}</span>
+                              <span className="text-xs font-extrabold uppercase">{safeFormatDate(cotis.periode_couverte_fin, { month: 'short' })}</span>
+                              <span className="text-[10px] text-muted">{safeFormatDate(cotis.periode_couverte_fin, { year: 'numeric' })}</span>
                             </div>
                             <div>
                               <div className="font-bold text-base" style={{ color: colors.textMain }}>Abonnement Mensuel</div>
                               <div className="text-sm flex items-center gap-2 mt-0.5 text-muted font-medium">
-                                <span>{t.paidOn} {new Date(cotis.date_paiement).toLocaleDateString(lang==='ar'?'ar-DZ':'fr-FR')}</span>
+                                <span>{t.paidOn} {safeFormatDate(cotis.date_paiement)}</span>
                               </div>
                             </div>
                           </div>
                           <div className={`sm:text-${lang === 'ar' ? 'left' : 'right'} flex sm:flex-col justify-between sm:justify-start items-center sm:items-end`}>
                             <div className="font-extrabold text-lg text-[var(--text-primary)]">
-                              {Number(cotis.montant_paye).toLocaleString('fr-DZ')} DA
+                              {Number(cotis.montant_paye || 0).toLocaleString('fr-DZ')} DA
                             </div>
                             <div className="text-xs font-bold flex items-center gap-1 mt-0.5 text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full">
                               <CheckCircle size={12} /> Réglé
@@ -572,15 +577,17 @@ export default function MemberPortal() {
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-               {/* Afficher les Meilleurs temps rapides */}
                {['50_NL', '100_NL', '50_DOS', '50_PAP'].map(eventId => {
                  const ev = SWIMMING_EVENTS.find(e => e.id === eventId);
-                 const perfs = performances.filter(p => p.event_id === eventId).sort((a,b) => a.seconds - b.seconds);
+                 if (!ev || !Array.isArray(performances)) return null;
+                 const perfs = performances
+                   .filter(p => p && p.event_id === eventId)
+                   .sort((a,b) => (a.seconds || 0) - (b.seconds || 0));
                  if (perfs.length === 0) return null;
                  return (
                    <div key={eventId} className="p-4 rounded-xl border bg-[var(--bg-tertiary)] border-[var(--border-color)]">
                      <span className="text-xs font-bold text-muted uppercase">{ev.shortLabel}</span>
-                     <div className="text-lg font-extrabold text-emerald-500 mt-1">{perfs[0].chrono_str}</div>
+                     <div className="text-lg font-extrabold text-emerald-500 mt-1">{perfs[0].chrono_str || '-'}</div>
                      <span className="text-[10px] bg-emerald-500/20 text-emerald-500 px-1.5 rounded-sm uppercase font-bold">PB</span>
                    </div>
                  );
@@ -595,9 +602,7 @@ export default function MemberPortal() {
             <div className="rounded-2xl border p-6 border-sky-500/30 bg-sky-500/5 relative overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-sky-500/10 rounded-full blur-3xl -mr-10 -mt-10"></div>
               <div className="flex items-center gap-4">
-                <div className="p-3 bg-sky-500 text-white rounded-2xl shadow-lg shadow-sky-500/30">
-                  <Megaphone size={24} />
-                </div>
+                <div className="p-3 bg-sky-500 text-white rounded-2xl shadow-lg shadow-sky-500/30"><Megaphone size={24} /></div>
                 <div>
                   <h3 className="text-lg font-extrabold text-[var(--text-primary)]">Bienvenue sur votre nouvel espace !</h3>
                   <p className="text-sm font-medium text-muted mt-1">Le portail vient d'être mis à jour. Vous pouvez désormais présenter votre carte virtuelle (QR) directement depuis votre smartphone pour accéder aux bassins.</p>
@@ -608,9 +613,7 @@ export default function MemberPortal() {
             <div className="rounded-2xl border p-6 border-amber-500/30 bg-amber-500/5 relative overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-3xl -mr-10 -mt-10"></div>
               <div className="flex items-center gap-4">
-                <div className="p-3 bg-amber-500 text-white rounded-2xl shadow-lg shadow-amber-500/30">
-                  <Award size={24} />
-                </div>
+                <div className="p-3 bg-amber-500 text-white rounded-2xl shadow-lg shadow-amber-500/30"><Award size={24} /></div>
                 <div>
                   <h3 className="text-lg font-extrabold text-[var(--text-primary)]">Compétition de Wilaya</h3>
                   <p className="text-sm font-medium text-muted mt-1">Les convocations pour le prochain meeting seront bientôt affichées ici. Gardez un œil sur vos performances !</p>
